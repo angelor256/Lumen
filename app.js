@@ -48,7 +48,7 @@ function num(s) {
 function parseQuick(text, now = new Date()) {
   let o = String(text || '').normalize('NFC');
   let n = strip(o).toLowerCase();
-  const out = { title: '', type: 'task', cat: 'personal', date: null, time: null, amount: null, repeat: null };
+  const out = { title: '', type: 'task', cat: 'personal', date: null, time: null, amount: null, repeat: null, star: false };
   const today = ymd(now);
   const cut = (re, fn) => {
     const m = re.exec(n);
@@ -66,6 +66,9 @@ function parseQuick(text, now = new Date()) {
     return addDays(today, diff);
   };
   const monthRe = '(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|setiembre|octubre|noviembre|diciembre)';
+
+  // importante
+  cut(/(?:^|\s)!+(?=\s|$)/, () => out.star = true) || cut(/\b(?:urgente|importante)\b/, () => out.star = true);
 
   // repetición
   cut(/\bcada (lunes|martes|miercoles|jueves|viernes|sabado|domingo)\b/, m => { out.repeat = 'weekly'; out.date = dow(m[1], true); })
@@ -173,7 +176,9 @@ function seed() {
   };
 }
 let S = (() => { try { const s = JSON.parse(localStorage.getItem(KEY)); if (s && s.items) return s; } catch (e) {} return seed(); })();
-S.cfg = S.cfg || {}; S.habits = S.habits || []; S.notes = S.notes || [];
+const COLS = ['items', 'habits', 'notes', 'moves', 'goals', 'people', 'checks', 'focus'];
+S.cfg = S.cfg || {}; COLS.forEach(k => { S[k] = S[k] || []; });
+const colsData = () => Object.fromEntries(COLS.map(k => [k, S[k]]));
 const persist = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} };
 let pushTimer;
 const save = () => { persist(); clearTimeout(pushTimer); pushTimer = setTimeout(sync, 1800); };
@@ -226,16 +231,19 @@ function nextFuture(d, rep) { const t = ymd(new Date()); let n = nextDate(d, rep
 
 function toggleItem(id, el) {
   const it = S.items.find(x => x.id === id); if (!it) return;
+  let gen = null, celebrate = false;
   if (!it.done) {
-    it.done = true; it.doneAt = Date.now(); touch(it);
+    it.done = true; it.doneAt = Date.now(); touch(it); celebrate = true;
     if (it.repeat && it.date) {
-      S.items.push({ ...it, id: uid(), date: nextFuture(it.date, it.repeat), done: false, doneAt: null, demo: false, created: Date.now(), updated: Date.now() });
+      gen = { ...it, id: uid(), date: nextFuture(it.date, it.repeat), done: false, doneAt: null, demo: false, created: Date.now(), updated: Date.now() };
+      if (gen.subs) gen.subs = gen.subs.map(x => ({ ...x, d: false }));
+      S.items.push(gen);
     }
-    var celebrate = true;
   } else { it.done = false; it.doneAt = null; touch(it); }
   save(); render();
   if (celebrate) {
     try { if (el) { const r = el.getBoundingClientRect(); burst(r.left + r.width / 2, r.top + r.height / 2); } if (navigator.vibrate) navigator.vibrate(12); } catch (e) {}
+    toast('Hecho', () => { it.done = false; it.doneAt = null; touch(it); if (gen) { gen.deleted = true; touch(gen); } save(); render(); });
   }
 }
 function toggleHabit(id, d) {
@@ -274,9 +282,10 @@ function row(i) {
     <button class="tick" data-act="toggle" data-id="${i.id}" aria-label="${i.done ? 'Marcar pendiente' : 'Completar'}">${I.check}</button>
     <div class="rmain" data-act="edit" data-id="${i.id}" tabindex="0">
       <b>${esc(i.title)}</b>
-      <small class="meta"><span class="mc">${shape(i.cat, 14)}${c.n}</span>${i.date ? `<span class="md">${rel(i.date)}</span>` : ''}${i.time ? `<span class="pill">${i.time}</span>` : ''}${i.repeat ? `<span class="mr">${I.loop}${REP[i.repeat]}</span>` : ''}</small>
+      <small class="meta"><span class="mc">${shape(i.cat, 14)}${c.n}</span>${i.date ? `<span class="md">${rel(i.date)}</span>` : ''}${i.time ? `<span class="pill">${i.time}</span>` : ''}${i.repeat ? `<span class="mr">${I.loop}${REP[i.repeat]}</span>` : ''}${i.subs && i.subs.length ? `<span class="pill">✓ ${i.subs.filter(x => x.d).length}/${i.subs.length}</span>` : ''}</small>
     </div>
     ${i.amount != null ? `<span class="amt">${money(i.amount)}</span>` : ''}
+    <button class="star ${i.star ? 'on' : ''}" data-act="star" data-id="${i.id}" aria-label="${i.star ? 'Quitar de lo importante' : 'Marcar como importante'}" aria-pressed="${!!i.star}">${I.star}</button>
   </div>`;
 }
 function grouped(list) {
@@ -286,33 +295,6 @@ function grouped(list) {
     h += row(i);
   });
   return h;
-}
-
-function vHoy() {
-  const d = new Date(), t = ymd(d);
-  const { today, over, done, total } = todaySet();
-  const p = total ? done / total : 0;
-  const say = total ? (done === total ? 'Todo listo por hoy.' : `${done} de ${total} listas.`) : (over.length ? 'Hoy está libre, pero quedó algo atrás.' : 'Hoy está libre.');
-  const L = live(S.items);
-  const up = L.filter(i => !i.done && i.date > t && i.date <= addDays(t, 7)).sort(byDate);
-  const mp = L.filter(i => i.type === 'pay' && !i.done && i.date && i.date.startsWith(t.slice(0, 7)));
-  const mpSum = mp.reduce((s, i) => s + (+i.amount || 0), 0);
-  const H = live(S.habits);
-  const sg = suggestRepeat();
-  return `
-  <section class="hero">
-    <div class="disc" style="--p:${p}" role="img" aria-label="Progreso de hoy ${Math.round(p * 100)}%"></div>
-    <h1 class="bignum" data-t="${d.getDate()}">${d.getDate()}</h1>
-    <p class="dateline">${DAYS_FULL[d.getDay()]} de ${MONTHS[d.getMonth()]}</p>
-    <p class="say">${greet()}. ${say}</p>
-  </section>
-  ${H.length ? `<div class="habs">${H.map(h => `<button class="hchip ${h.log[t] ? 'on' : ''}" data-act="hday" data-id="${h.id}" data-d="${t}" aria-pressed="${!!h.log[t]}"><span>${esc(h.emoji)}</span>${esc(h.name)}</button>`).join('')}</div>` : ''}
-  ${over.length ? sec('Atrasado', over.length, 'late') + over.map(row).join('') : ''}
-  ${sec('Hoy', today.length)}
-  ${today.length ? [...today].sort(byTime).map(row).join('') : empty('Nada agendado. Toca el + y escribe como hablas.')}
-  ${up.length ? sec('Esta semana', up.length) + grouped(up) : ''}
-  ${mp.length ? `<div class="sticker"><b>${money(mpSum)}</b><span>por pagar este mes en ${mp.length} ${mp.length === 1 ? 'pago' : 'pagos'}</span></div>` : ''}
-  ${sg ? `<div class="idea">${shape('ideas', 22)}<p>Has pagado <b>${esc(sg.title)}</b> más de una vez. ¿Lo dejo repetirse solo cada mes?</p><button class="btn" data-act="mkrepeat" data-id="${sg.id}">Sí, repetir</button></div>` : ''}`;
 }
 
 function vAgenda() {
@@ -341,48 +323,12 @@ function vAgenda() {
   ${list}`;
 }
 
-function vDinero() {
-  const ym = ui.pm;
-  const L = live(S.items).filter(i => i.type === 'pay' && i.date && i.date.startsWith(ym)).sort(byDate);
-  const sum = a => a.reduce((s, i) => s + (+i.amount || 0), 0);
-  const paid = sum(L.filter(i => i.done)), pend = sum(L.filter(i => !i.done)), tot = paid + pend;
-  const pct = tot ? Math.round(paid / tot * 100) : 0;
-  const seen = new Set(), rec = [];
-  live(S.items).filter(i => i.type === 'pay' && i.repeat && !i.done).forEach(i => { const k = strip(i.title).toLowerCase(); if (!seen.has(k)) { seen.add(k); rec.push(i); } });
-  const eq = i => (+i.amount || 0) * (i.repeat === 'weekly' ? 4.33 : i.repeat === 'yearly' ? 1 / 12 : 1);
-  const fixed = rec.reduce((s, i) => s + eq(i), 0);
-  return `<h1 class="vt" data-t="Dinero">Dinero</h1>
-  <div class="mnav"><button data-act="pm" data-n="-1" aria-label="Mes anterior">${I.left}</button><h2>${monthLabel(ym)}</h2><button data-act="pm" data-n="1" aria-label="Mes siguiente">${I.right}</button></div>
-  <section class="money">
-    <p class="mlabel">Por pagar</p>
-    <p class="mbig" data-t="${money(pend)}">${money(pend)}</p>
-    <div class="bar" role="img" aria-label="${pct}% pagado"><i style="width:${pct}%"></i></div>
-    <p class="msub">${money(paid)} pagado de ${money(tot)}</p>
-  </section>
-  ${sec('Pagos del mes', L.length)}
-  ${L.length ? L.map(row).join('') : empty('Sin pagos este mes. Escribe «pagar luz 45 el 25» en el +.')}
-  ${rec.length ? sec('Fijos que se repiten', rec.length) + `<div class="fixed">${rec.sort((a, b) => eq(b) - eq(a)).map(i => `<div class="fx" data-act="edit" data-id="${i.id}">${shape('pagos', 16)}<span>${esc(i.title)}</span><b>${money(i.amount || 0)}</b></div>`).join('')}<p class="msub">Cuestan alrededor de ${money(Math.round(fixed))} al mes.</p></div>` : ''}`;
-}
-
 function notesHtml() {
   const q = strip(ui.q).toLowerCase();
   const N = live(S.notes).filter(n => !q || strip(n.text).toLowerCase().includes(q)).sort((a, b) => (b.pin ? 1 : 0) - (a.pin ? 1 : 0) || b.updated - a.updated);
   if (!N.length) return empty(q ? 'Ninguna nota coincide.' : 'Tu mente está despejada. Suelta aquí lo que se te ocurra.');
   return N.map(n => `<article class="note ${n.pin ? 'pinned' : ''}"><p>${esc(n.text).replace(/(#[\wáéíóúñ]+)/gi, '<mark>$1</mark>')}</p><div class="na"><button data-act="npin" data-id="${n.id}" aria-label="Fijar">${I.pin}</button><button data-act="ndel" data-id="${n.id}" aria-label="Borrar nota">${I.x}</button></div></article>`).join('');
 }
-function vMente() {
-  const t = ymd(new Date()), days = [...Array(7)].map((_, k) => addDays(t, k - 6));
-  const H = live(S.habits);
-  return `<h1 class="vt" data-t="Mente">Mente</h1>
-  ${sec('Rituales', H.length)}
-  ${H.map(h => { const s = streak(h); return `<div class="hab"><div class="he">${esc(h.emoji)}</div><div class="hb"><b>${esc(h.name)}</b><div class="hd">${days.map(d => `<button class="hdot ${h.log[d] ? 'on' : ''} ${d === t ? 'now' : ''}" data-act="hday" data-id="${h.id}" data-d="${d}" aria-label="${rel(d)}" aria-pressed="${!!h.log[d]}">${DAYS_S[fromYmd(d).getDay()][0]}</button>`).join('')}</div></div><div class="stk">${s > 0 ? `${s}<small>${s === 1 ? 'día' : 'días'}</small>` : ''}</div><button class="x" data-act="hdel" data-id="${h.id}" aria-label="Borrar ritual">${I.x}</button></div>`; }).join('')}
-  <form class="addh" data-form="habit"><input class="in" name="emoji" maxlength="2" value="✨" aria-label="Emoji" style="width:62px;text-align:center"><input class="in" name="name" placeholder="Nuevo ritual, por ejemplo: estirarme" required><button class="btn">Añadir</button></form>
-  ${sec('Notas sueltas', null)}
-  <form class="addn" data-form="note"><textarea class="in" name="text" rows="2" placeholder="Suelta lo que tengas en la cabeza. Usa #etiquetas si quieres." required></textarea><button class="btn pri">Guardar nota</button></form>
-  <input class="in search" data-act="nsearch" placeholder="Buscar en mis notas" value="${esc(ui.q)}" aria-label="Buscar notas">
-  <div id="notesList">${notesHtml()}</div>`;
-}
-
 function render() {
   const v = { hoy: vHoy, agenda: vAgenda, dinero: vDinero, mente: vMente }[ui.tab];
   const el = $('#view');
@@ -396,8 +342,8 @@ function render() {
 }
 
 /* ============================ HOJA (crear / editar) ============================ */
-let edit = null, touched = {}, f = { type: 'task', cat: 'personal' };
-const PH = ['pagar internet 30 el 15 cada mes', 'cita dentista viernes 4pm', 'entregar informe al cliente mañana', 'cumple de Sofi el 3 de marzo', 'idea: app para mi mamá', 'llamar al banco hoy 10am'];
+let edit = null, touched = {}, f = { type: 'task', cat: 'personal', star: false }, fSubs = [];
+const PH = ['pagar internet 30 el 15 cada mes', 'cita dentista viernes 4pm', 'entregar informe al cliente mañana importante', 'cumple de Sofi el 3 de marzo', 'idea: app para mi mamá', 'llamar al banco hoy 10am'];
 
 function openSheet(html, after) {
   $('#sheetBody').innerHTML = html;
@@ -411,9 +357,22 @@ function closeSheet() {
 }
 const hist = () => { const seen = new Set(), out = []; [...live(S.items)].reverse().forEach(i => { const k = i.title.toLowerCase(); if (!seen.has(k) && out.length < 50) { seen.add(k); out.push(i.title); } }); return out; };
 
+function renderSubs() {
+  const box = $('#fSubsBox'); if (!box) return;
+  box.innerHTML = `<p class="sh-h" style="font-size:18px;margin:16px 0 6px">Pasos</p>` +
+    fSubs.map((s, k) => `<div class="sub"><button type="button" class="sk ${s.d ? 'on' : ''}" data-sub="t" data-k="${k}" aria-label="Marcar paso">${I.check}</button><span class="${s.d ? 'sd' : ''}">${esc(s.t)}</span><button type="button" class="x" data-sub="x" data-k="${k}" aria-label="Quitar paso">${I.x}</button></div>`).join('') +
+    `<div class="subadd"><input id="fSubIn" class="in" placeholder="Agregar un paso" maxlength="80" autocomplete="off"><button type="button" class="btn" data-sub="a">Añadir</button></div>`;
+}
+function addSub() {
+  const i = $('#fSubIn'); if (!i) return;
+  const t = i.value.trim(); if (!t) return;
+  fSubs.push({ t, d: false }); renderSubs(); $('#fSubIn').focus();
+}
+
 function itemSheet(it, preset) {
   edit = it || null; touched = {};
-  f = { type: it ? it.type : (preset?.type || 'task'), cat: it ? it.cat : (preset?.cat || 'personal') };
+  f = { type: it ? it.type : (preset?.type || 'task'), cat: it ? it.cat : (preset?.cat || 'personal'), star: it ? !!it.star : !!(preset && preset.star) };
+  fSubs = it && it.subs ? it.subs.map(s => ({ ...s })) : [];
   const v = it || preset || {};
   const types = [['task', 'Tarea'], ['pay', 'Pago'], ['appt', 'Cita']].concat(it ? [] : [['note', 'Nota']]);
   openSheet(`
@@ -427,23 +386,35 @@ function itemSheet(it, preset) {
       <div class="g2"><label>Monto<input id="fAmount" inputmode="decimal" class="in" placeholder="opcional" value="${v.amount ?? ''}"></label>
         <label>Repetir<select id="fRepeat" class="in"><option value="">No</option><option value="weekly">Cada semana</option><option value="monthly">Cada mes</option><option value="yearly">Cada año</option></select></label></div>
       <div class="cats" id="fCats" role="group" aria-label="Categoría">${Object.entries(CATS).map(([k, c]) => `<button type="button" data-c="${k}">${shape(k, 16)}${c.n}</button>`).join('')}</div>
+      <button type="button" id="fStar" class="starbtn" aria-pressed="false">${I.star}<span>Importante, ponla en tu foco</span></button>
+      <div id="fSubsBox"></div>
     </div>
     <div class="acts">${it ? '<button class="btn" data-act="idel">Borrar</button>' : ''}<button class="btn pri" data-act="isave">Guardar</button></div>`,
     () => {
       $('#fRepeat').value = v.repeat || '';
-      syncSeg();
+      syncSeg(); renderSubs();
       const ti = $('#fTitle');
       if (!it) ti.addEventListener('input', applyParse);
       ti.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); saveItem(); } });
       $('#fType').onclick = e => { const b = e.target.closest('button'); if (!b) return; f.type = b.dataset.t; touched.type = 1; syncSeg(); };
       $('#fCats').onclick = e => { const b = e.target.closest('button'); if (!b) return; f.cat = b.dataset.c; touched.cat = 1; syncSeg(); };
+      $('#fStar').onclick = () => { f.star = !f.star; touched.star = 1; syncSeg(); };
       ['fDate', 'fTime', 'fAmount', 'fRepeat'].forEach(id => $('#' + id).addEventListener('input', () => touched[id] = 1));
+      const box = $('#fSubsBox');
+      box.onclick = e => {
+        const b = e.target.closest('[data-sub]'); if (!b) return;
+        const a = b.dataset.sub, k = +b.dataset.k;
+        if (a === 't') fSubs[k].d = !fSubs[k].d; else if (a === 'x') fSubs.splice(k, 1); else if (a === 'a') { addSub(); return; }
+        renderSubs();
+      };
+      box.onkeydown = e => { if (e.target.id === 'fSubIn' && e.key === 'Enter') { e.preventDefault(); addSub(); } };
       setTimeout(() => ti.focus(), 260);
     });
 }
 function syncSeg() {
   document.querySelectorAll('#fType button').forEach(b => b.classList.toggle('on', b.dataset.t === f.type));
   document.querySelectorAll('#fCats button').forEach(b => b.classList.toggle('on', b.dataset.c === f.cat));
+  const st = $('#fStar'); if (st) { st.classList.toggle('on', !!f.star); st.setAttribute('aria-pressed', !!f.star); }
   $('#fFields').hidden = f.type === 'note';
 }
 function applyParse() {
@@ -454,6 +425,7 @@ function applyParse() {
   const pr = key.length > 2 ? [...live(S.items)].reverse().find(i => strip(i.title).toLowerCase() === key) : null;
   if (!touched.type) { f.type = p.type; if (pr && p.type === 'task') f.type = pr.type; }
   if (!touched.cat) { f.cat = p.cat; if (pr && p.cat === 'personal') f.cat = pr.cat; }
+  if (!touched.star) f.star = p.star;
   if (pr && p.amount == null && !touched.fAmount && pr.amount != null) $('#fAmount').value = pr.amount;
   if (pr && !p.repeat && !touched.fRepeat && pr.repeat) $('#fRepeat').value = pr.repeat;
   syncSeg();
@@ -461,10 +433,10 @@ function applyParse() {
 }
 function saveItem() {
   const raw = $('#fTitle').value.trim();
-  if (!raw) { $('#fTitle').focus(); $('#fTitle').classList.add('shake'); setTimeout(() => $('#fTitle').classList.remove('shake'), 400); return; }
+  if (!raw) { shake($('#fTitle')); $('#fTitle').focus(); return; }
   if (f.type === 'note') { S.notes.push({ id: uid(), text: raw, pin: false, created: Date.now(), updated: Date.now() }); save(); closeSheet(); ui.tab = 'mente'; render(); toast('Nota guardada'); return; }
   const title = edit ? raw : (parseQuick(raw).title || raw);
-  const data = { title, type: f.type, cat: f.cat, date: $('#fDate').value || null, time: $('#fTime').value || null, amount: $('#fAmount').value ? num($('#fAmount').value) : null, repeat: $('#fRepeat').value || null };
+  const data = { title, type: f.type, cat: f.cat, star: !!f.star, subs: fSubs.filter(s => s.t), date: $('#fDate').value || null, time: $('#fTime').value || null, amount: $('#fAmount').value ? num($('#fAmount').value) : null, repeat: $('#fRepeat').value || null };
   if (data.time && !data.date) data.date = ymd(new Date());
   if (edit) Object.assign(edit, data, { demo: false }), touch(edit);
   else S.items.push({ id: uid(), done: false, created: Date.now(), updated: Date.now(), ...data });
@@ -478,6 +450,7 @@ function settingsSheet() {
     <h3 class="sh-t">Ajustes</h3>
     <div class="set"><label>Tu nombre<input id="sName" class="in" value="${esc(c.name || '')}" placeholder="opcional"></label>
     <label>Símbolo de moneda<input id="sCur" class="in" maxlength="4" value="${esc(c.cur || '$')}"></label></div>
+    <label style="margin-bottom:14px">Presupuesto mensual para gastos (opcional)<input id="sBudget" inputmode="decimal" class="in" placeholder="0" value="${c.budget || ''}"></label>
     <div class="seg" id="sTheme"><button type="button" data-th="papel" class="${S.theme !== 'noche' ? 'on' : ''}">Papel</button><button type="button" data-th="noche" class="${S.theme === 'noche' ? 'on' : ''}">Noche</button></div>
     <h4 class="sh-h">Nube (Supabase)</h4>
     <p class="hint">${ss ? `Conectado como <b>${esc(ss.email)}</b>. Se sincroniza solo.` : 'Para tener tus datos en todos tus aparatos. Mira el README.md para crear tu proyecto gratis.'}</p>
@@ -491,13 +464,14 @@ function settingsSheet() {
     <div class="acts"><button class="btn pri" data-act="ssave">Listo</button></div>`,
     () => {
       $('#sTheme').onclick = e => { const b = e.target.closest('button'); if (!b) return; S.theme = b.dataset.th; document.querySelectorAll('#sTheme button').forEach(x => x.classList.toggle('on', x === b)); persist(); render(); };
-      $('#impFile').onchange = ev => { const file = ev.target.files[0]; if (!file) return; file.text().then(t => { try { const d = JSON.parse(t); S.items = mergeCol(S.items, d.items || []); S.habits = mergeCol(S.habits, d.habits || []); S.notes = mergeCol(S.notes, d.notes || []); save(); render(); toast('Respaldo importado'); } catch (e) { toast('Ese archivo no es un respaldo válido'); } }); };
+      $('#impFile').onchange = ev => { const file = ev.target.files[0]; if (!file) return; file.text().then(t => { try { const d = JSON.parse(t); COLS.forEach(k => { S[k] = mergeCol(S[k], d[k] || []); }); save(); render(); toast('Respaldo importado'); } catch (e) { toast('Ese archivo no es un respaldo válido'); } }); };
     });
 }
 function readCfg() {
   const g = id => { const e = $('#' + id); return e ? e.value.trim() : undefined; };
-  const nm = g('sName'), cur = g('sCur'), url = g('cUrl'), key = g('cKey');
+  const nm = g('sName'), cur = g('sCur'), url = g('cUrl'), key = g('cKey'), bu = g('sBudget');
   if (nm !== undefined) S.cfg.name = nm;
+  if (bu !== undefined) S.cfg.budget = bu ? (num(bu) || 0) : 0;
   if (cur !== undefined) S.cfg.cur = cur || '$';
   if (url !== undefined) S.cfg.url = url.replace(/\/+$/, '');
   if (key !== undefined) S.cfg.key = key;
@@ -542,19 +516,19 @@ async function sync(manual) {
   try {
     const t = await token();
     const rows = await sb(`/rest/v1/life_data?select=data&user_id=eq.${S.sess.uid}`, { token: t });
+    let remote = {};
     if (rows && rows[0] && rows[0].data) {
-      const d = rows[0].data;
-      S.items = mergeCol(S.items, d.items || []); S.habits = mergeCol(S.habits, d.habits || []); S.notes = mergeCol(S.notes, d.notes || []);
+      remote = rows[0].data;
+      COLS.forEach(k => { S[k] = mergeCol(S[k], remote[k] || []); });
     }
-    S.items = purge(S.items); S.habits = purge(S.habits); S.notes = purge(S.notes);
-    await sb('/rest/v1/life_data', { method: 'POST', token: t, headers: { Prefer: 'resolution=merge-duplicates,return=minimal' }, body: { user_id: S.sess.uid, data: { items: S.items, habits: S.habits, notes: S.notes }, updated_at: new Date().toISOString() } });
+    COLS.forEach(k => { S[k] = purge(S[k]); });
+    await sb('/rest/v1/life_data', { method: 'POST', token: t, headers: { Prefer: 'resolution=merge-duplicates,return=minimal' }, body: { user_id: S.sess.uid, data: { ...remote, ...colsData() }, updated_at: new Date().toISOString() } });
     lastErr = ''; if (manual) toast('Sincronizado');
   } catch (e) { lastErr = e.message; if (manual) toast('No pude sincronizar: ' + e.message); }
   finally { syncing = false; persist(); render(); }
 }
 
 /* ============================ EXTRAS ============================ */
-function toast(t) { const el = $('#toast'); el.textContent = t; el.classList.add('on'); clearTimeout(toast.t); toast.t = setTimeout(() => el.classList.remove('on'), 2400); }
 function burst(x, y) {
   try { if (matchMedia('(prefers-reduced-motion: reduce)').matches || !Element.prototype.animate) return; } catch (e) { return; }
   const cols = ['#FF4FA3', '#FFD426', '#3A3AF2', '#19B79F', '#FF7A2F'];
@@ -591,6 +565,377 @@ async function notifyDue(force) {
   try { const reg = await navigator.serviceWorker.ready; reg.showNotification(title, { body, icon: 'icon-192.png', tag: 'lumen-hoy' }); } catch (e) { new Notification(title, { body }); }
 }
 
+/* ============================ NUEVO · más herramientas ============================ */
+I.star = ic('<path d="M12 3l2.7 5.8 6.3.7-4.7 4.3 1.3 6.2L12 17l-5.6 3 1.3-6.2L3 9.5l6.3-.7z"/>', 20);
+const FACES = ['😞', '😕', '😐', '🙂', '😄'];
+const ENERGY = ['Energía baja', 'Energía media', 'Energía alta'];
+const GCATS = {
+  comida: { n: 'Comida', e: '🍽️' }, transporte: { n: 'Transporte', e: '🚌' }, hogar: { n: 'Hogar', e: '🏠' },
+  salud: { n: 'Salud', e: '💊' }, ocio: { n: 'Ocio', e: '🎬' }, otros: { n: 'Otros', e: '✦' }
+};
+const fmtN = n => Number(n).toLocaleString('es', { maximumFractionDigits: 2 });
+const daysSince = d => Math.round((fromYmd(ymd(new Date())) - fromYmd(d)) / 864e5);
+const sumBy = (a, k = 'amount') => a.reduce((s, x) => s + (+x[k] || 0), 0);
+const shake = el => { if (!el) return; el.classList.add('shake'); setTimeout(() => el.classList.remove('shake'), 400); };
+
+/* ---------- deshacer ---------- */
+function toast(t, undo) {
+  const el = $('#toast');
+  el.innerHTML = `<span>${esc(t)}</span>` + (undo ? '<button class="tundo" data-act="undo">Deshacer</button>' : '');
+  toast.undo = undo || null;
+  el.classList.add('on'); clearTimeout(toast.t);
+  toast.t = setTimeout(() => { el.classList.remove('on'); toast.undo = null; }, undo ? 6000 : 2400);
+}
+function softDel(col, id, msg, after) {
+  const o = S[col].find(x => x.id === id); if (!o) return;
+  const re = after || render;
+  o.deleted = true; touch(o); save(); re();
+  toast(msg || 'Borrado', () => { o.deleted = false; touch(o); save(); re(); });
+}
+async function notify(title, body) {
+  if (!('Notification' in window) || Notification.permission !== 'granted') return;
+  try { const reg = await navigator.serviceWorker.ready; reg.showNotification(title, { body, icon: 'icon-192.png', tag: 'lumen-' + title }); }
+  catch (e) { try { new Notification(title, { body }); } catch (e2) {} }
+}
+
+/* ---------- check-in de ánimo ---------- */
+const checkToday = () => { const t = ymd(new Date()); return live(S.checks).find(c => c.date === t) || null; };
+let CK = { m: 3, e: 2 };
+function checkSheet(mood) {
+  const c = checkToday();
+  CK = { m: mood || (c && c.mood) || 3, e: (c && c.energy) || 2 };
+  openSheet(`<h3 class="sh-t">¿Cómo vas hoy?</h3>
+    <div class="faces big" id="ckF">${FACES.map((f, k) => `<button type="button" data-m="${k + 1}" aria-label="Ánimo ${k + 1} de 5">${f}</button>`).join('')}</div>
+    <div class="seg" id="ckE">${ENERGY.map((l, k) => `<button type="button" data-e="${k + 1}">${l}</button>`).join('')}</div>
+    <label>Algo bueno de hoy (opcional)<input id="ckN" class="in" maxlength="140" placeholder="Aunque sea pequeño" value="${esc((c && c.note) || '')}"></label>
+    <div class="acts"><button class="btn pri" data-act="ck-save">Guardar</button></div>`, () => {
+    const draw = () => {
+      document.querySelectorAll('#ckF button').forEach(b => b.classList.toggle('on', +b.dataset.m === CK.m));
+      document.querySelectorAll('#ckE button').forEach(b => b.classList.toggle('on', +b.dataset.e === CK.e));
+    };
+    $('#ckF').onclick = ev => { const b = ev.target.closest('button'); if (b) { CK.m = +b.dataset.m; draw(); } };
+    $('#ckE').onclick = ev => { const b = ev.target.closest('button'); if (b) { CK.e = +b.dataset.e; draw(); } };
+    draw();
+  });
+}
+function moodInsight() {
+  const cs = live(S.checks).filter(c => c.mood), H = live(S.habits);
+  if (cs.length < 6 || !H.length) return null;
+  const share = c => H.filter(h => h.log[c.date]).length / H.length;
+  const hi = cs.filter(c => share(c) >= .5), lo = cs.filter(c => share(c) < .5);
+  if (hi.length < 3 || lo.length < 3) return null;
+  const avg = a => a.reduce((s, c) => s + c.mood, 0) / a.length, a = avg(hi), b = avg(lo);
+  if (Math.abs(a - b) < .4) return 'Por ahora tu ánimo no cambia mucho según cumplas o no tus rituales. Sigue anotando para ver más claro.';
+  return `Los días que cumples la mitad o más de tus rituales, tu ánimo promedia ${a.toFixed(1)}; los demás días, ${b.toFixed(1)}. Es un patrón de tus datos, no una prueba de causa.`;
+}
+function moodStrip() {
+  const t = ymd(new Date()), days = [...Array(14)].map((_, k) => addDays(t, k - 13)), by = {};
+  live(S.checks).forEach(c => by[c.date] = c);
+  const vals = days.map(d => by[d]).filter(Boolean);
+  const avg = vals.length ? vals.reduce((s, c) => s + c.mood, 0) / vals.length : null, ins = moodInsight();
+  return `<div class="mood"><div class="ms">${days.map(d => { const c = by[d]; return `<span class="mcell ${c ? 'm' + c.mood : ''}" title="${rel(d)}">${c ? FACES[c.mood - 1] : ''}</span>`; }).join('')}</div>
+    <p class="msub">${avg != null ? `Promedio de ${vals.length} ${vals.length === 1 ? 'día' : 'días'}: ${FACES[Math.round(avg) - 1]} ${avg.toFixed(1)} de 5` : 'Haz tu primer check-in desde la pantalla Hoy.'}</p>
+    ${ins ? `<p class="insight">${esc(ins)}</p>` : ''}</div>`;
+}
+function checkCard() {
+  const c = checkToday();
+  if (c) return `<div class="check done" data-act="chk-edit" tabindex="0"><span class="face">${FACES[c.mood - 1]}</span><div><b>Check-in de hoy</b><small>${ENERGY[c.energy - 1] || ''}${c.note ? `, «${esc(c.note)}»` : ''}</small></div></div>`;
+  return `<div class="check"><p>¿Cómo vas hoy?</p><div class="faces">${FACES.map((f, k) => `<button data-act="chk" data-m="${k + 1}" aria-label="Ánimo ${k + 1} de 5">${f}</button>`).join('')}</div></div>`;
+}
+
+/* ---------- enfoque (temporizador) ---------- */
+const RUNKEY = 'lumen.run';
+let RUN = null; try { RUN = JSON.parse(localStorage.getItem(RUNKEY)); } catch (e) {}
+const setRun = r => { RUN = r; try { r ? localStorage.setItem(RUNKEY, JSON.stringify(r)) : localStorage.removeItem(RUNKEY); } catch (e) {} };
+const fmtT = s => `${pad(Math.floor(s / 60))}:${pad(s % 60)}`;
+function logFocus(min) {
+  const t = ymd(new Date()), id = 'fo' + t; let f = S.focus.find(x => x.id === id);
+  if (f) { f.min = (+f.min || 0) + min; f.deleted = false; touch(f); } else S.focus.push({ id, date: t, min, updated: Date.now() });
+  save();
+}
+function focusSheet(presetId) {
+  if (RUN) return runSheet();
+  const t = ymd(new Date());
+  const L = live(S.items).filter(i => !i.done && ((i.date && i.date <= t) || i.star)).sort((a, b) => (b.star ? 1 : 0) - (a.star ? 1 : 0) || byDate(a, b));
+  openSheet(`<h3 class="sh-t">Enfoque</h3>
+    <p class="hint">Una cosa a la vez. Elige en qué y por cuánto tiempo.</p>
+    <label>¿En qué?<select id="fcTask" class="in"><option value="">Lo que sea</option>${L.map(i => `<option value="${i.id}" ${presetId === i.id ? 'selected' : ''}>${i.star ? '★ ' : ''}${esc(i.title)}</option>`).join('')}</select></label>
+    <div class="seg" id="fcDur" style="margin-top:14px">${[15, 25, 45, 60].map(m => `<button type="button" data-m="${m}" class="${m === 25 ? 'on' : ''}">${m} min</button>`).join('')}</div>
+    <div class="acts"><button class="btn pri" data-act="fc-start">Empezar</button></div>`, () => {
+    $('#fcDur').onclick = e => { const b = e.target.closest('button'); if (!b) return; document.querySelectorAll('#fcDur button').forEach(x => x.classList.toggle('on', x === b)); };
+  });
+}
+function runSheet() {
+  openSheet(`<h3 class="sh-t">${esc(RUN.title || 'Enfoque')}</h3>
+    <div class="fdisc"><div class="disc" id="fcDisc" style="--p:0"></div><div class="ftime" id="fcTime">${fmtT(RUN.dur * 60)}</div></div>
+    <p class="hint" style="text-align:center">Deja el celular boca abajo. Yo te aviso cuando termine.</p>
+    <div class="acts wrap" style="justify-content:center"><button class="btn" data-act="fc-stop">Terminar ahora</button><button class="btn" data-act="close">Seguir en segundo plano</button></div>`, focusTick);
+}
+function focusTick() {
+  const pill = $('#runPill');
+  if (!RUN) { if (pill) pill.hidden = true; return; }
+  const left = Math.max(0, Math.round((RUN.end - Date.now()) / 1000));
+  if (pill) { pill.hidden = false; pill.textContent = '⏱ ' + fmtT(left); }
+  const tm = $('#fcTime');
+  if (tm) { tm.textContent = fmtT(left); const d = $('#fcDisc'); if (d) d.style.setProperty('--p', Math.min(1, 1 - left / (RUN.dur * 60))); }
+  if (left <= 0) focusDone();
+}
+function focusDone() {
+  const r = RUN; if (!r) return;
+  setRun(null); logFocus(r.dur);
+  try { if (navigator.vibrate) navigator.vibrate([200, 100, 200]); } catch (e) {}
+  notify('Ronda lista', `Terminaste ${r.dur} min${r.title ? ' en «' + r.title + '»' : ''}`);
+  focusTick(); render();
+  openSheet(`<h3 class="sh-t">¡Ronda lista!</h3>
+    <p class="hint" style="font-size:17px;color:var(--ink)">${r.dur} minutos de enfoque${r.title ? ` en <b>${esc(r.title)}</b>` : ''}. Levántate, estira y toma agua.</p>
+    <div class="acts wrap">${r.id ? `<button class="btn pri" data-act="fc-complete" data-id="${r.id}">Ya la terminé</button>` : ''}<button class="btn" data-act="fc-again" data-id="${r.id || ''}">Otra ronda</button><button class="btn" data-act="close">Cerrar</button></div>`);
+}
+
+/* ---------- dinero: gastos, ingresos, presupuesto ---------- */
+function guessGcat(s) {
+  s = strip(s).toLowerCase();
+  const M = [
+    ['comida', /almuerzo|cena|desayuno|comida|super|mercado|cafe|restaurante|pizza|hamburguesa|snack|antojo|panaderia|verdura|fruta/],
+    ['transporte', /uber|taxi|bus|gasolina|pasaje|parqueo|peaje|metro|didi|combustible/],
+    ['hogar', /casa|limpieza|mueble|reparacion|ferreteria|cocina|detergente|jabon/],
+    ['salud', /farmacia|medicina|doctor|dentista|gym|gimnasio|vitamina|consulta|terapia/],
+    ['ocio', /cine|salida|bar|fiesta|juego|concierto|regalo|netflix|libro|cerveza|trago|paseo/]
+  ];
+  for (const [k, re] of M) if (re.test(s)) return k;
+  return 'otros';
+}
+let MS = { kind: 'out', mv: null, cat: 'otros', touched: false };
+function moneySheet(kind, mv) {
+  const out = kind === 'out';
+  MS = { kind, mv: mv || null, cat: mv ? (mv.cat || 'otros') : 'otros', touched: !!mv };
+  const v = mv || { amount: '', note: '', date: ymd(new Date()) };
+  openSheet(`<h3 class="sh-t">${mv ? 'Editar' : (out ? 'Nuevo gasto' : 'Nuevo ingreso')}</h3>
+    <input id="mAmt" class="in big" inputmode="decimal" placeholder="${esc(S.cfg.cur || '$')} 0" value="${v.amount}" aria-label="Monto">
+    <input id="mNote" class="in" style="margin-top:10px" autocomplete="off" placeholder="${out ? 'En qué (almuerzo, taxi, farmacia)' : 'De dónde (sueldo, venta, regalo)'}" value="${esc(v.note)}">
+    ${out ? `<div class="cats" id="mCats" style="margin-top:12px">${Object.entries(GCATS).map(([k, c]) => `<button type="button" data-c="${k}">${c.e} ${c.n}</button>`).join('')}</div>` : ''}
+    <label style="margin-top:12px">Fecha<input id="mDate" type="date" class="in" value="${v.date}"></label>
+    <div class="acts">${mv ? '<button class="btn" data-act="m-del">Borrar</button>' : ''}<button class="btn pri" data-act="m-save">Guardar</button></div>`, () => {
+    const drawC = () => document.querySelectorAll('#mCats button').forEach(b => b.classList.toggle('on', b.dataset.c === MS.cat));
+    drawC();
+    if (out) {
+      $('#mCats').onclick = e => { const b = e.target.closest('button'); if (!b) return; MS.cat = b.dataset.c; MS.touched = true; drawC(); };
+      $('#mNote').addEventListener('input', () => {
+        const n = $('#mNote').value.trim(); if (n.length < 3) return;
+        if (!MS.touched) { MS.cat = guessGcat(n); drawC(); }
+        if (!MS.mv && !$('#mAmt').value) {
+          const pr = [...live(S.moves)].reverse().find(m => m.kind === 'out' && m.note && strip(m.note).toLowerCase() === strip(n).toLowerCase());
+          if (pr) { $('#mAmt').value = pr.amount; if (!MS.touched) { MS.cat = pr.cat; drawC(); } }
+        }
+      });
+    }
+    ['mAmt', 'mNote'].forEach(id => $('#' + id).addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); A['m-save'](); } }));
+    setTimeout(() => { const e = $('#mAmt'); if (e) e.focus(); }, 260);
+  });
+}
+function mvRow(m) {
+  const out = m.kind === 'out', g = out ? (GCATS[m.cat] || GCATS.otros) : { e: '💰', n: 'Ingreso' };
+  return `<div class="mv" data-act="mv" data-id="${m.id}" tabindex="0"><span class="me">${g.e}</span><div><b>${esc(m.note || g.n)}</b><small>${g.n}, ${rel(m.date)}</small></div><span class="v ${out ? '' : 'pos'}">${out ? '−' : '+'}${money(m.amount)}</span></div>`;
+}
+
+/* ---------- metas ---------- */
+const goalPct = g => g.kind === 'num' ? Math.min(100, Math.round((+g.progress || 0) / (+g.target || 1) * 100)) : Math.min(100, Math.round(+g.progress || 0));
+function goalHtml(g) {
+  const pct = goalPct(g), unit = g.unit ? ' ' + g.unit : '';
+  const txt = g.kind === 'num' ? `${fmtN(g.progress || 0)} de ${fmtN(g.target || 0)}${unit}` : `${pct}%`;
+  let extra = '';
+  if (pct >= 100) extra = '¡Cumplida!';
+  else if (g.due) {
+    const left = -daysSince(g.due);
+    extra = left < 0 ? 'La fecha ya pasó' : left === 0 ? 'Vence hoy' : `Faltan ${left} ${left === 1 ? 'día' : 'días'}`;
+    if (g.kind === 'num' && left > 0) extra += `, necesitas ${fmtN(Math.ceil((g.target - g.progress) / Math.max(1, left / 7)))}${unit} por semana`;
+  }
+  return `<div class="goal ${pct >= 100 ? 'won' : ''}" data-act="goal" data-id="${g.id}" tabindex="0"><div class="ge">${esc(g.emoji || '🎯')}</div><div class="gb"><b>${esc(g.title)}</b><div class="bar"><i style="width:${pct}%"></i></div><small>${esc(txt)}${extra ? '<br>' + esc(extra) : ''}</small></div></div>`;
+}
+let GS = { g: null, kind: 'pct' };
+function goalSheet(g) {
+  GS = { g: g || null, kind: g ? g.kind : 'pct' };
+  const v = g || { title: '', emoji: '🎯', target: '', progress: 0, unit: '', due: '' };
+  openSheet(`<h3 class="sh-t">${g ? 'Meta' : 'Nueva meta'}</h3>
+    <div class="addh" style="margin:0 0 12px"><input id="gEmoji" class="in" maxlength="2" value="${esc(v.emoji)}" style="width:62px;text-align:center" aria-label="Emoji"><input id="gTitle" class="in" placeholder="Por ejemplo: ahorrar para el viaje" value="${esc(v.title)}"></div>
+    <div class="seg" id="gKind"><button type="button" data-k="pct">Porcentaje</button><button type="button" data-k="num">Número</button></div>
+    <div id="gNum" class="g2"><label>Meta<input id="gTarget" inputmode="decimal" class="in" value="${v.target ?? ''}"></label><label>Unidad<input id="gUnit" class="in" placeholder="$, km, libros" value="${esc(v.unit || '')}"></label></div>
+    <label id="gProgL">Avance actual<input id="gProg" inputmode="decimal" class="in" value="${v.kind === 'num' ? (v.progress ?? 0) : 0}"></label>
+    <div id="gRangeBox"><p class="hint" id="gOut">Avance: ${v.kind === 'pct' || !g ? (+v.progress || 0) : 0}%</p><input id="gRange" type="range" min="0" max="100" value="${v.kind === 'pct' || !g ? (+v.progress || 0) : 0}" aria-label="Avance en porcentaje"></div>
+    <label style="margin-top:12px">Fecha límite (opcional)<input id="gDue" type="date" class="in" value="${v.due || ''}"></label>
+    <div class="acts">${g ? '<button class="btn" data-act="goal-del">Borrar</button>' : ''}<button class="btn pri" data-act="goal-save">Guardar</button></div>`, () => {
+    const draw = () => {
+      document.querySelectorAll('#gKind button').forEach(b => b.classList.toggle('on', b.dataset.k === GS.kind));
+      $('#gNum').hidden = GS.kind !== 'num'; $('#gProgL').hidden = GS.kind !== 'num'; $('#gRangeBox').hidden = GS.kind !== 'pct';
+    };
+    draw();
+    $('#gKind').onclick = e => { const b = e.target.closest('button'); if (b) { GS.kind = b.dataset.k; draw(); } };
+    $('#gRange').oninput = () => { $('#gOut').textContent = 'Avance: ' + $('#gRange').value + '%'; };
+  });
+}
+
+/* ---------- gente ---------- */
+const dueFolks = () => live(S.people).filter(p => p.last && daysSince(p.last) >= (p.every || 30)).sort((a, b) => daysSince(b.last) - daysSince(a.last));
+function personHtml(p) {
+  const n = p.last ? daysSince(p.last) : null, due = n != null && n >= (p.every || 30);
+  const txt = n == null ? 'sin registro' : n === 0 ? 'hablaron hoy' : `hace ${n} ${n === 1 ? 'día' : 'días'}`;
+  return `<div class="person ${due ? 'due' : ''}"><div class="pa" data-act="person" data-id="${p.id}" tabindex="0">${esc((p.name || '?')[0].toUpperCase())}</div><div class="pb" data-act="person" data-id="${p.id}"><b>${esc(p.name)}</b><small>${txt}${due ? ', toca escribirle' : ''}</small></div><button class="btn" data-act="p-done" data-id="${p.id}">Ya hablamos</button></div>`;
+}
+let PS = null;
+function personSheet(p) {
+  PS = p || null;
+  const v = p || { name: '', every: 30, last: ymd(new Date()), bday: '' };
+  openSheet(`<h3 class="sh-t">${p ? 'Persona' : 'Nueva persona'}</h3>
+    <input id="pName" class="in big" placeholder="Nombre" autocomplete="off" value="${esc(v.name)}">
+    <div class="g2" style="margin-top:12px"><label>Hablar cada<select id="pEvery" class="in">${[[7, 'semana'], [14, '2 semanas'], [30, 'mes'], [60, '2 meses'], [90, '3 meses']].map(([d, l]) => `<option value="${d}" ${+v.every === d ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+    <label>Última vez<input id="pLast" type="date" class="in" value="${v.last || ''}"></label></div>
+    <label>Cumpleaños (opcional)<input id="pBday" type="date" class="in" value="${v.bday || ''}"></label>
+    <p class="hint">Si pones el cumpleaños, lo agrego a tu agenda cada año.</p>
+    <div class="acts">${p ? '<button class="btn" data-act="p-del">Borrar</button>' : ''}<button class="btn pri" data-act="p-save">Guardar</button></div>`, () => setTimeout(() => { const e = $('#pName'); if (e && !p) e.focus(); }, 260));
+}
+function activeBday(p) { return S.items.find(x => !x.deleted && !x.done && x.repeat === 'yearly' && (x.id === p.bdayId || x.title === `Cumple de ${p.name}`)) || null; }
+function syncBday(p, oldName) {
+  const it = activeBday({ ...p, name: oldName || p.name }) || activeBday(p);
+  if (!p.bday) { if (it) { it.deleted = true; touch(it); } p.bdayId = null; return; }
+  const b = fromYmd(p.bday), now = new Date(), t = ymd(now);
+  let d = mkDate(now.getFullYear(), b.getMonth(), b.getDate());
+  if (d < t) d = mkDate(now.getFullYear() + 1, b.getMonth(), b.getDate());
+  const data = { title: `Cumple de ${p.name}`, type: 'appt', cat: 'citas', date: d, repeat: 'yearly' };
+  if (it) { Object.assign(it, data); touch(it); p.bdayId = it.id; }
+  else { const n = { id: uid(), done: false, created: Date.now(), updated: Date.now(), time: null, amount: null, ...data }; S.items.push(n); p.bdayId = n.id; }
+}
+
+/* ---------- revisión semanal ---------- */
+function weekStats() {
+  const t = ymd(new Date()), from = addDays(t, -6), pf = addDays(t, -13), pt = addDays(t, -7), L = live(S.items);
+  const done = L.filter(i => i.done && i.doneAt && ymd(new Date(i.doneAt)) >= from).length;
+  const late = L.filter(i => !i.done && i.date && i.date < t).length;
+  const H = live(S.habits); let hp = null;
+  if (H.length) { let n = 0; H.forEach(h => { for (let k = 0; k < 7; k++) if (h.log[addDays(t, -k)]) n++; }); hp = Math.round(n / (H.length * 7) * 100); }
+  const mc = live(S.checks).filter(c => c.date >= from && c.date <= t), mood = mc.length ? mc.reduce((s, c) => s + c.mood, 0) / mc.length : null;
+  const focus = sumBy(live(S.focus).filter(f => f.date >= from && f.date <= t), 'min');
+  const out = live(S.moves).filter(m => m.kind === 'out');
+  return { done, late, habitPct: hp, mood, focus, spent: sumBy(out.filter(m => m.date >= from && m.date <= t)), prev: sumBy(out.filter(m => m.date >= pf && m.date <= pt)), hasMoves: out.length > 0 };
+}
+function reviewDue() {
+  const dw = new Date().getDay(); if (dw !== 0 && dw !== 1) return false;
+  const cut = Date.now() - 5 * 864e5;
+  return !live(S.notes).some(n => n.review && n.created > cut);
+}
+function reviewSheet() {
+  const s = weekStats(), lines = [];
+  if (s.late) lines.push(`Te quedan ${s.late} ${s.late === 1 ? 'pendiente atrasado' : 'pendientes atrasados'}.`);
+  if (s.mood != null) lines.push(`Tu ánimo promedió ${FACES[Math.round(s.mood) - 1]} ${s.mood.toFixed(1)} de 5.`);
+  if (s.hasMoves) lines.push(`Gastaste ${money(s.spent)}${s.prev ? `, ${s.spent > s.prev ? 'más' : 'menos'} que la semana anterior (${money(s.prev)})` : ''}.`);
+  openSheet(`<h3 class="sh-t">Tu semana</h3>
+    <div class="trio"><div><small>Hechas</small><b>${s.done}</b></div><div><small>Rituales</small><b>${s.habitPct == null ? '–' : s.habitPct + '%'}</b></div><div><small>Enfoque</small><b>${s.focus}<i class="u">min</i></b></div></div>
+    ${lines.length ? `<p class="msub">${esc(lines.join(' '))}</p>` : ''}
+    <label style="margin-top:16px">¿Qué salió bien?<textarea id="rvA" class="in" rows="2"></textarea></label>
+    <label>¿Qué te frenó?<textarea id="rvB" class="in" rows="2"></textarea></label>
+    <label>¿Qué es lo único que importa la próxima semana?<input id="rvC" class="in" placeholder="Lo convierto en tarea importante"></label>
+    <div class="acts"><button class="btn pri" data-act="rv-save">Guardar revisión</button></div>`);
+}
+
+/* ---------- vistas (Hoy, Dinero, Mente) ---------- */
+function vHoy() {
+  const d = new Date(), t = ymd(d);
+  const { today, over, done, total } = todaySet();
+  const p = total ? done / total : 0;
+  const say = total ? (done === total ? 'Todo listo por hoy.' : `${done} de ${total} listas.`) : (over.length ? 'Hoy está libre, pero quedó algo atrás.' : 'Hoy está libre.');
+  const L = live(S.items), isFav = i => i.star && !i.done;
+  const fav = L.filter(isFav).sort(byDate);
+  const todayList = today.filter(i => !isFav(i)).sort(byTime), overList = over.filter(i => !isFav(i));
+  const up = L.filter(i => !i.done && !i.star && i.date > t && i.date <= addDays(t, 7)).sort(byDate);
+  const undated = L.filter(i => !i.done && !i.star && !i.date).sort((a, b) => (b.created || 0) - (a.created || 0));
+  const mp = L.filter(i => i.type === 'pay' && !i.done && i.date && i.date.startsWith(t.slice(0, 7)));
+  const mpSum = sumBy(mp), H = live(S.habits), sg = suggestRepeat(), folks = dueFolks().slice(0, 2);
+  return `
+  <section class="hero">
+    <div class="disc" style="--p:${p}" role="img" aria-label="Progreso de hoy ${Math.round(p * 100)}%"></div>
+    <h1 class="bignum" data-t="${d.getDate()}">${d.getDate()}</h1>
+    <p class="dateline">${DAYS_FULL[d.getDay()]} de ${MONTHS[d.getMonth()]}</p>
+    <p class="say">${greet()}${S.cfg.name ? ', ' + esc(S.cfg.name) : ''}. ${say}</p>
+  </section>
+  ${H.length ? `<div class="habs">${H.map(h => `<button class="hchip ${h.log[t] ? 'on' : ''}" data-act="hday" data-id="${h.id}" data-d="${t}" aria-pressed="${!!h.log[t]}"><span>${esc(h.emoji)}</span>${esc(h.name)}</button>`).join('')}</div>` : ''}
+  ${checkCard()}
+  ${fav.length ? sec('Lo importante', fav.length) + fav.map(row).join('') : ''}
+  ${overList.length ? sec('Atrasado', overList.length, 'late') + overList.map(row).join('') : ''}
+  ${sec('Hoy', todayList.length)}
+  ${todayList.length ? todayList.map(row).join('') : (fav.length ? '' : empty('Nada agendado. Toca el + y escribe como hablas.'))}
+  ${up.length ? sec('Esta semana', up.length) + grouped(up) : ''}
+  ${undated.length ? sec('Sin fecha', undated.length) + (ui.undAll ? undated : undated.slice(0, 5)).map(row).join('') + (undated.length > 5 ? `<button class="btn addbtn" data-act="und">${ui.undAll ? 'Ver menos' : 'Ver las ' + undated.length}</button>` : '') : ''}
+  ${folks.map(f => `<div class="idea">${shape('personal', 22)}<p>Hace <b>${daysSince(f.last)} días</b> que no hablas con <b>${esc(f.name)}</b>.</p><button class="btn" data-act="p-done" data-id="${f.id}">Ya hablamos</button></div>`).join('')}
+  ${reviewDue() ? `<div class="idea">${shape('ideas', 22)}<p>${d.getDay() === 0 ? 'Es domingo, buen momento para cerrar la semana.' : 'Empieza la semana mirando la que pasó.'}</p><button class="btn pri" data-act="review">Revisar</button></div>` : ''}
+  ${mp.length ? `<div class="sticker"><b>${money(mpSum)}</b><span>por pagar este mes en ${mp.length} ${mp.length === 1 ? 'pago' : 'pagos'}</span></div>` : ''}
+  ${sg ? `<div class="idea">${shape('ideas', 22)}<p>Has pagado <b>${esc(sg.title)}</b> más de una vez. ¿Lo dejo repetirse solo cada mes?</p><button class="btn" data-act="mkrepeat" data-id="${sg.id}">Sí, repetir</button></div>` : ''}`;
+}
+
+function vDinero() {
+  const ym = ui.pm, cur = ymd(new Date()).slice(0, 7);
+  const L = live(S.items).filter(i => i.type === 'pay' && i.date && i.date.startsWith(ym)).sort(byDate);
+  const MV = live(S.moves).filter(m => m.date && m.date.startsWith(ym)).sort((a, b) => b.date.localeCompare(a.date) || b.updated - a.updated);
+  const paid = sumBy(L.filter(i => i.done)), pend = sumBy(L.filter(i => !i.done)), tot = paid + pend;
+  const pct = tot ? Math.round(paid / tot * 100) : 0;
+  const inc = sumBy(MV.filter(m => m.kind === 'in')), spent = sumBy(MV.filter(m => m.kind === 'out')), libre = inc - spent - tot;
+  const budget = +S.cfg.budget || 0;
+  const byCat = {}; MV.filter(m => m.kind === 'out').forEach(m => byCat[m.cat] = (byCat[m.cat] || 0) + (+m.amount || 0));
+  const cats = Object.entries(byCat).sort((a, b) => b[1] - a[1]), maxC = cats.length ? cats[0][1] : 1;
+  let bud = '';
+  if (budget > 0) {
+    const bp = Math.min(100, Math.round(spent / budget * 100)), left = budget - spent;
+    const dl = ym === cur ? new Date(+ym.slice(0, 4), +ym.slice(5), 0).getDate() - new Date().getDate() + 1 : 0;
+    bud = `<div class="budget"><p class="mlabel">Presupuesto para gastos</p><div class="bar ${spent > budget ? 'over' : ''}"><i style="width:${bp}%"></i></div><p class="msub">${spent > budget ? `Te pasaste por ${money(spent - budget)}.` : `Te quedan ${money(left)}${dl > 0 ? `, unos ${money(Math.floor(left / dl))} al día` : ''}.`}</p></div>`;
+  }
+  const eq = i => (+i.amount || 0) * (i.repeat === 'weekly' ? 4.33 : i.repeat === 'yearly' ? 1 / 12 : 1);
+  const seen = new Set(), rec = [];
+  live(S.items).filter(i => i.type === 'pay' && i.repeat && !i.done).forEach(i => { const k = strip(i.title).toLowerCase(); if (!seen.has(k)) { seen.add(k); rec.push(i); } });
+  const fixed = rec.reduce((s, i) => s + eq(i), 0);
+  return `<h1 class="vt" data-t="Dinero">Dinero</h1>
+  <div class="mnav"><button data-act="pm" data-n="-1" aria-label="Mes anterior">${I.left}</button><h2>${monthLabel(ym)}</h2><button data-act="pm" data-n="1" aria-label="Mes siguiente">${I.right}</button></div>
+  <section class="money">
+    <p class="mlabel">Por pagar</p>
+    <p class="mbig" data-t="${money(pend)}">${money(pend)}</p>
+    <div class="bar" role="img" aria-label="${pct}% pagado"><i style="width:${pct}%"></i></div>
+    <p class="msub">${money(paid)} pagado de ${money(tot)}</p>
+  </section>
+  <div class="trio"><div><small>Entró</small><b>${money(inc)}</b></div><div><small>Gastado</small><b>${money(spent)}</b></div><div class="${inc && libre < 0 ? 'neg' : ''}"><small>Te queda</small><b>${inc ? money(libre) : '–'}</b></div></div>
+  <p class="msub">${inc ? `Ya descuenta los ${money(tot)} de pagos del mes.` : 'Anota lo que te entra para ver cuánto te queda libre.'}</p>
+  <div class="acts wrap" style="margin:12px 0 4px"><button class="btn pri" data-act="m-out">− Gasto</button><button class="btn" data-act="m-in">+ Ingreso</button></div>
+  ${bud}
+  ${cats.length ? sec('En qué se va', null) + `<div class="cbs">${cats.map(([k, v]) => { const g = GCATS[k] || GCATS.otros; return `<div class="cb"><span>${g.e} ${g.n}</span><div class="bar sm"><i style="width:${Math.max(4, Math.round(v / maxC * 100))}%"></i></div><b>${money(v)}</b></div>`; }).join('')}</div>` : ''}
+  ${MV.length ? sec('Movimientos', MV.length) + MV.slice(0, 15).map(mvRow).join('') + (MV.length > 15 ? `<p class="msub">y ${MV.length - 15} más de este mes</p>` : '') : ''}
+  ${sec('Pagos del mes', L.length)}
+  ${L.length ? L.map(row).join('') : empty('Sin pagos este mes. Escribe «pagar luz 45 el 25» en el +.')}
+  ${rec.length ? sec('Fijos que se repiten', rec.length) + `<div class="fixed">${rec.sort((a, b) => eq(b) - eq(a)).map(i => `<div class="fx" data-act="edit" data-id="${i.id}">${shape('pagos', 16)}<span>${esc(i.title)}</span><b>${money(i.amount || 0)}</b></div>`).join('')}<p class="msub">Cuestan alrededor de ${money(Math.round(fixed))} al mes.</p></div>` : ''}`;
+}
+
+function vMente() {
+  const t = ymd(new Date()), days = [...Array(7)].map((_, k) => addDays(t, k - 6));
+  const H = live(S.habits), G = live(S.goals), P = live(S.people).sort((a, b) => (b.last ? daysSince(b.last) / (b.every || 30) : 0) - (a.last ? daysSince(a.last) / (a.every || 30) : 0));
+  return `<h1 class="vt" data-t="Mente">Mente</h1>
+  <div class="jump">${[['rit', 'Rituales'], ['met', 'Metas'], ['gen', 'Gente'], ['ani', 'Ánimo'], ['not', 'Notas']].map(([k, l]) => `<button data-act="jump" data-to="s-${k}">${l}</button>`).join('')}</div>
+  <div id="s-rit" class="anchor"></div>
+  ${sec('Rituales', H.length)}
+  ${H.map(h => { const s = streak(h); return `<div class="hab"><div class="he">${esc(h.emoji)}</div><div class="hb"><b>${esc(h.name)}</b><div class="hd">${days.map(d => `<button class="hdot ${h.log[d] ? 'on' : ''} ${d === t ? 'now' : ''}" data-act="hday" data-id="${h.id}" data-d="${d}" aria-label="${rel(d)}" aria-pressed="${!!h.log[d]}">${DAYS_S[fromYmd(d).getDay()][0]}</button>`).join('')}</div></div><div class="stk">${s > 0 ? `${s}<small>${s === 1 ? 'día' : 'días'}</small>` : ''}</div><button class="x" data-act="hdel" data-id="${h.id}" aria-label="Borrar ritual">${I.x}</button></div>`; }).join('')}
+  <form class="addh" data-form="habit"><input class="in" name="emoji" maxlength="2" value="✨" aria-label="Emoji" style="width:62px;text-align:center"><input class="in" name="name" placeholder="Nuevo ritual, por ejemplo: estirarme" required><button class="btn">Añadir</button></form>
+  <div id="s-met" class="anchor"></div>
+  ${sec('Metas', G.length)}
+  ${G.length ? G.map(goalHtml).join('') : empty('Una meta clara pesa menos que una vaga. Crea la primera.')}
+  <button class="btn addbtn" data-act="goal-new">Nueva meta</button>
+  <div id="s-gen" class="anchor"></div>
+  ${sec('Gente', P.length)}
+  ${P.length ? P.map(personHtml).join('') : empty('Anota a quién no quieres perder de vista.')}
+  <button class="btn addbtn" data-act="person-new">Agregar persona</button>
+  <div id="s-ani" class="anchor"></div>
+  ${sec('Ánimo', null)}
+  ${moodStrip()}
+  <button class="btn addbtn" style="margin-top:12px" data-act="review">Revisión de la semana</button>
+  <div id="s-not" class="anchor"></div>
+  ${sec('Notas sueltas', null)}
+  <form class="addn" data-form="note"><textarea class="in" name="text" rows="2" placeholder="Suelta lo que tengas en la cabeza. Usa #etiquetas si quieres." required></textarea><button class="btn pri">Guardar nota</button></form>
+  <input class="in search" data-act="nsearch" placeholder="Buscar en mis notas" value="${esc(ui.q)}" aria-label="Buscar notas">
+  <div id="notesList">${notesHtml()}</div>`;
+}
+
 /* ============================ EVENTOS ============================ */
 const A = {
   tab: el => { ui.tab = el.dataset.tab; ui.anim = true; render(); scrollTo(0, 0); },
@@ -623,6 +968,116 @@ const A = {
   demo: () => { let n = 0;[S.items, S.habits, S.notes].forEach(a => a.forEach(x => { if (x.demo && !x.deleted) { x.deleted = true; touch(x); n++; } })); save(); render(); toast(n ? 'Ejemplos borrados' : 'No quedan ejemplos'); },
   close: () => closeSheet()
 };
+/* ---- acciones nuevas (y las que ahora tienen "Deshacer") ---- */
+const refreshNotes = () => { const l = $('#notesList'); if (l) l.innerHTML = notesHtml(); };
+Object.assign(A, {
+  undo: () => { const u = toast.undo; toast.undo = null; $('#toast').classList.remove('on'); if (u) u(); },
+  idel: () => { if (!edit) return; const id = edit.id; closeSheet(); softDel('items', id, 'Borrado'); },
+  hdel: el => softDel('habits', el.dataset.id, 'Ritual borrado'),
+  ndel: el => softDel('notes', el.dataset.id, 'Nota borrada', refreshNotes),
+  star: el => { const it = S.items.find(x => x.id === el.dataset.id); if (!it) return; it.star = !it.star; touch(it); save(); render(); },
+  und: () => { ui.undAll = !ui.undAll; render(); },
+  jump: el => { const t = document.getElementById(el.dataset.to); if (t) t.scrollIntoView({ behavior: 'smooth', block: 'start' }); },
+  exp: () => download('lumen-respaldo-' + ymd(new Date()) + '.json', 'application/json', JSON.stringify(colsData(), null, 1)),
+  demo: () => { let n = 0; COLS.forEach(k => S[k].forEach(x => { if (x.demo && !x.deleted) { x.deleted = true; touch(x); n++; } })); save(); render(); toast(n ? 'Ejemplos borrados' : 'No quedan ejemplos'); },
+
+  // check-in
+  chk: el => checkSheet(+el.dataset.m),
+  'chk-edit': () => checkSheet(),
+  'ck-save': () => {
+    const t = ymd(new Date()), id = 'ck' + t, note = $('#ckN').value.trim();
+    const c = S.checks.find(x => x.id === id);
+    if (c) { Object.assign(c, { mood: CK.m, energy: CK.e, note, deleted: false }); touch(c); }
+    else S.checks.push({ id, date: t, mood: CK.m, energy: CK.e, note, updated: Date.now() });
+    save(); closeSheet(); render(); toast('Check-in guardado');
+  },
+
+  // enfoque
+  focus: () => focusSheet(),
+  'fc-start': () => {
+    const id = $('#fcTask').value || null, on = document.querySelector('#fcDur .on'), dur = on ? +on.dataset.m : 25;
+    const it = id ? S.items.find(x => x.id === id) : null;
+    setRun({ id, title: it ? it.title : '', start: Date.now(), end: Date.now() + dur * 60000, dur });
+    closeSheet(); focusTick(); toast(`Enfoque iniciado: ${dur} min`);
+  },
+  'fc-stop': () => {
+    const el = Math.floor((Date.now() - RUN.start) / 60000);
+    if (el >= 5) logFocus(el);
+    setRun(null); closeSheet(); focusTick(); render(); toast(el >= 5 ? `Sumaste ${el} min de enfoque` : 'Enfoque cancelado');
+  },
+  'fc-complete': el => { const it = S.items.find(x => x.id === el.dataset.id); closeSheet(); if (it && !it.done) toggleItem(it.id); },
+  'fc-again': el => { closeSheet(); setTimeout(() => focusSheet(el.dataset.id || undefined), 120); },
+
+  // dinero
+  'm-out': () => moneySheet('out'),
+  'm-in': () => moneySheet('in'),
+  mv: el => { const m = S.moves.find(x => x.id === el.dataset.id); if (m) moneySheet(m.kind, m); },
+  'm-save': () => {
+    const amount = num($('#mAmt').value);
+    if (!amount || amount <= 0) { shake($('#mAmt')); $('#mAmt').focus(); return; }
+    const data = { kind: MS.kind, amount, cat: MS.kind === 'out' ? MS.cat : 'in', note: $('#mNote').value.trim(), date: $('#mDate').value || ymd(new Date()) };
+    if (MS.mv) { Object.assign(MS.mv, data); touch(MS.mv); } else S.moves.push({ id: uid(), updated: Date.now(), ...data });
+    ui.pm = data.date.slice(0, 7);
+    save(); closeSheet(); render(); toast(MS.kind === 'out' ? 'Gasto anotado' : 'Ingreso anotado');
+  },
+  'm-del': () => { if (!MS.mv) return; const id = MS.mv.id; closeSheet(); softDel('moves', id, 'Movimiento borrado'); },
+
+  // metas
+  'goal-new': () => goalSheet(null),
+  goal: el => { const g = S.goals.find(x => x.id === el.dataset.id); if (g) goalSheet(g); },
+  'goal-save': () => {
+    const title = $('#gTitle').value.trim(); if (!title) { shake($('#gTitle')); return; }
+    const kind = GS.kind, target = kind === 'num' ? num($('#gTarget').value) : null;
+    if (kind === 'num' && !target) { shake($('#gTarget')); return; }
+    const progress = kind === 'num' ? (num($('#gProg').value) || 0) : +$('#gRange').value;
+    const data = { title, emoji: $('#gEmoji').value.trim() || '🎯', kind, target, progress, unit: kind === 'num' ? $('#gUnit').value.trim() : '', due: $('#gDue').value || null };
+    const was = GS.g ? goalPct(GS.g) : 0;
+    if (GS.g) { Object.assign(GS.g, data); touch(GS.g); } else S.goals.push({ id: uid(), created: Date.now(), updated: Date.now(), ...data });
+    const now = goalPct(data);
+    save(); closeSheet(); render();
+    if (now >= 100 && was < 100) { toast('¡Meta cumplida!'); burst(innerWidth / 2, innerHeight / 3); } else toast('Meta guardada');
+  },
+  'goal-del': () => { if (!GS.g) return; const id = GS.g.id; closeSheet(); softDel('goals', id, 'Meta borrada'); },
+
+  // gente
+  'person-new': () => personSheet(null),
+  person: el => { const p = S.people.find(x => x.id === el.dataset.id); if (p) personSheet(p); },
+  'p-save': () => {
+    const name = $('#pName').value.trim(); if (!name) { shake($('#pName')); return; }
+    const data = { name, every: +$('#pEvery').value || 30, last: $('#pLast').value || null, bday: $('#pBday').value || '' };
+    let p = PS, old = null;
+    if (p) { old = p.name; Object.assign(p, data, { deleted: false }); touch(p); } else { p = { id: uid(), updated: Date.now(), ...data }; S.people.push(p); }
+    syncBday(p, old);
+    save(); closeSheet(); render(); toast('Guardado');
+  },
+  'p-del': () => {
+    if (!PS) return; const p = PS, it = activeBday(p), id = p.id;
+    if (it) { it.deleted = true; touch(it); }
+    closeSheet(); softDel('people', id, 'Persona borrada');
+  },
+  'p-done': el => {
+    const p = S.people.find(x => x.id === el.dataset.id); if (!p) return;
+    p.last = ymd(new Date()); touch(p); save(); render(); toast('Anotado');
+  },
+
+  // revisión semanal
+  review: () => reviewSheet(),
+  'rv-save': () => {
+    const a = $('#rvA').value.trim(), b = $('#rvB').value.trim(), c = $('#rvC').value.trim();
+    if (!a && !b && !c) { toast('Escribe al menos una respuesta'); return; }
+    const t = ymd(new Date()), d = new Date();
+    const lines = [`Revisión del ${d.getDate()} de ${MONTHS[d.getMonth()]}`];
+    if (a) lines.push('Salió bien: ' + a); if (b) lines.push('Me frenó: ' + b); if (c) lines.push('Lo que importa: ' + c);
+    lines.push('#revisión');
+    S.notes.push({ id: uid(), text: lines.join('\n'), pin: false, review: true, created: Date.now(), updated: Date.now() });
+    if (c) {
+      const nextMon = addDays(t, ((8 - d.getDay()) % 7) || 7);
+      S.items.push({ id: uid(), done: false, created: Date.now(), updated: Date.now(), title: c, type: 'task', cat: 'personal', star: true, date: nextMon, time: null, amount: null, repeat: null });
+    }
+    save(); closeSheet(); render(); toast(c ? 'Guardada. Tu prioridad quedó como tarea importante' : 'Revisión guardada');
+  }
+});
+
 document.addEventListener('click', e => { const el = e.target.closest('[data-act]'); if (!el || el.tagName === 'INPUT') return; const fn = A[el.dataset.act]; if (fn) fn(el, e); });
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') closeSheet();
@@ -641,7 +1096,8 @@ document.addEventListener('submit', e => {
 if (typeof document !== 'undefined' && $('#view')) {
   render();
   if ('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('sw.js').catch(() => {});
-  sync(); notifyDue();
+  sync(); notifyDue(); focusTick();
+  setInterval(focusTick, 1000);
   setInterval(() => { if (!document.hidden) sync(); }, 90000);
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) { render(); sync(); notifyDue(); } });
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) { render(); sync(); notifyDue(); focusTick(); } });
 }

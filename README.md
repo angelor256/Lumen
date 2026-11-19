@@ -62,6 +62,28 @@ En el botón **+** escribe como hablas:
 Si ya escribiste algo antes (por ejemplo "Pagar agua"), recuerda su monto, categoría y repetición.
 Al completar algo que se repite, crea solo el siguiente.
 
+## Qué trae (versión 2)
+
+| Herramienta | Dónde | Para qué |
+|---|---|---|
+| **★ Lo importante** | Estrella en cada tarea; sección arriba en Hoy | Tu foco del día. También con la palabra "importante" o "urgente" al escribir |
+| **Enfoque** | Botón ⏱ de la cabecera | Temporizador de 15/25/45/60 min para una sola cosa; sigue corriendo si cierras la app |
+| **Pasos** | Al editar una tarea | Mini-checklist dentro de la tarea (se ve como ✓ 2/4) |
+| **Check-in** | Hoy | Ánimo y energía del día. En Mente ves 14 días y un patrón (por ejemplo, tu ánimo vs. tus rituales) |
+| **Gastos e ingresos** | Dinero | Anota en segundos; adivina la categoría y recuerda montos repetidos. Calcula cuánto **te queda libre** |
+| **Presupuesto** | Ajustes | Cuánto te queda por día para gastar este mes |
+| **Metas** | Mente | Por porcentaje o por número (ahorro, km, libros) con el ritmo semanal que necesitas |
+| **Gente** | Mente | A quién llevas tiempo sin escribirle, con cumpleaños anual automático en la agenda |
+| **Revisión semanal** | Mente (y aviso en Hoy los domingos y lunes) | Resumen de tu semana y 3 preguntas; tu respuesta se vuelve tarea importante |
+| **Deshacer** | Al borrar o completar | Aparece un botón durante 6 segundos |
+| **Sin fecha** | Hoy | Las tareas sin fecha ya no se pierden |
+
+## Si ya tenías Lumen publicado
+
+No hay que tocar la base de datos. Reemplaza en tu repo **`index.html`**, **`app.js`** y **`sw.js`** (el resto no cambió).
+Abre la app en cada aparato una vez con internet para que se actualice.
+Tus datos anteriores se conservan; las secciones nuevas empiezan vacías.
+
 ## 5. Automatizar desde afuera (siguiente nivel)
 
 Como todo vive en la tabla `life_data`, puedes leerla con un script (Python, por ejemplo) y mandarte avisos reales

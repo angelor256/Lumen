@@ -176,7 +176,7 @@ function seed() {
   };
 }
 let S = (() => { try { const s = JSON.parse(localStorage.getItem(KEY)); if (s && s.items) return s; } catch (e) {} return seed(); })();
-const COLS = ['items', 'habits', 'notes', 'moves', 'goals', 'people', 'checks', 'focus'];
+const COLS = ['items', 'habits', 'notes', 'moves', 'goals', 'people', 'checks', 'focus', 'lists'];
 S.cfg = S.cfg || {}; COLS.forEach(k => { S[k] = S[k] || []; });
 const colsData = () => Object.fromEntries(COLS.map(k => [k, S[k]]));
 const persist = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} };
@@ -912,7 +912,10 @@ function vMente() {
   const t = ymd(new Date()), days = [...Array(7)].map((_, k) => addDays(t, k - 6));
   const H = live(S.habits), G = live(S.goals), P = live(S.people).sort((a, b) => (b.last ? daysSince(b.last) / (b.every || 30) : 0) - (a.last ? daysSince(a.last) / (a.every || 30) : 0));
   return `<h1 class="vt" data-t="Mente">Mente</h1>
-  <div class="jump">${[['rit', 'Rituales'], ['met', 'Metas'], ['gen', 'Gente'], ['ani', 'Ánimo'], ['not', 'Notas']].map(([k, l]) => `<button data-act="jump" data-to="s-${k}">${l}</button>`).join('')}</div>
+  <div class="jump">${[['lis', 'Listas'], ['rit', 'Rituales'], ['met', 'Metas'], ['gen', 'Gente'], ['ani', 'Ánimo'], ['not', 'Notas']].map(([k, l]) => `<button data-act="jump" data-to="s-${k}">${l}</button>`).join('')}</div>
+  <div id="s-lis" class="anchor"></div>
+  ${sec('Listas', live(S.lists).length)}
+  ${listsHtml()}
   <div id="s-rit" class="anchor"></div>
   ${sec('Rituales', H.length)}
   ${H.map(h => { const s = streak(h); return `<div class="hab"><div class="he">${esc(h.emoji)}</div><div class="hb"><b>${esc(h.name)}</b><div class="hd">${days.map(d => `<button class="hdot ${h.log[d] ? 'on' : ''} ${d === t ? 'now' : ''}" data-act="hday" data-id="${h.id}" data-d="${d}" aria-label="${rel(d)}" aria-pressed="${!!h.log[d]}">${DAYS_S[fromYmd(d).getDay()][0]}</button>`).join('')}</div></div><div class="stk">${s > 0 ? `${s}<small>${s === 1 ? 'día' : 'días'}</small>` : ''}</div><button class="x" data-act="hdel" data-id="${h.id}" aria-label="Borrar ritual">${I.x}</button></div>`; }).join('')}
@@ -936,8 +939,68 @@ function vMente() {
   <div id="notesList">${notesHtml()}</div>`;
 }
 
+/* ============================ LISTAS ============================ */
+const LIST_TPL = [
+  { n: 'Compras', e: '🛒', i: ['Frutas y verduras', 'Pan', 'Leche', 'Huevos', 'Agua'] },
+  { n: 'Viaje', e: '🧳', i: ['Documentos', 'Cargador del celular', 'Ropa', 'Medicinas', 'Artículos de aseo'] },
+  { n: 'Mudanza', e: '📦', i: ['Cajas y cinta', 'Cambiar dirección', 'Avisar al banco', 'Luz e internet'] },
+  { n: 'Casa', e: '🏠', i: [] },
+  { n: 'Por ver o leer', e: '🎬', i: [] },
+  { n: 'Regalos', e: '🎁', i: [] }
+];
+function listsHtml() {
+  const L = live(S.lists);
+  return (L.length ? L.map(l => { const n = l.items.length, d = l.items.filter(x => x.d).length; return `<button class="lcard" data-act="lopen" data-id="${l.id}"><div class="he">${esc(l.e)}</div><div style="flex:1"><b>${esc(l.n)}</b><small>${n ? `${d} de ${n} listas` : 'Vacía'}</small>${n ? `<div class="lbar"><i style="width:${Math.round(d / n * 100)}%"></i></div>` : ''}</div></button>`; }).join('') : empty('Compras, viaje, mudanza… cualquier lista con casillas.')) + '<button class="btn addbtn" data-act="lnew">Nueva lista</button>';
+}
+function listNewSheet() {
+  openSheet(`<h3 class="sh-t">Nueva lista</h3>
+    <p class="hint">Empieza con una plantilla o crea la tuya.</p>
+    <div class="tpls">${LIST_TPL.map((t, i) => `<button data-act="ltpl" data-i="${i}"><span>${t.e}</span>${esc(t.n)}</button>`).join('')}</div>
+    <form class="addh" data-form="lnew" style="margin:0"><input class="in" name="e" maxlength="2" value="📝" aria-label="Emoji" style="width:62px;text-align:center"><input class="in" name="n" placeholder="Nombre de tu lista" required><button class="btn pri">Crear</button></form>`);
+}
+function listSheet(id, keep) {
+  const l = S.lists.find(x => x.id === id && !x.deleted); if (!l) { closeSheet(); return; }
+  ui.list = id;
+  const open = l.items.filter(x => !x.d), done = l.items.filter(x => x.d), top = keep ? $('#sheet').scrollTop : 0;
+  const li = x => `<div class="li ${x.d ? 'd' : ''}"><button class="lk" data-act="ltog" data-id="${x.id}" aria-label="${x.d ? 'Desmarcar' : 'Marcar'}">${x.d ? '✓' : ''}</button><button class="lt" data-act="ltog" data-id="${x.id}">${esc(x.t)}</button><button class="lx" data-act="lrm" data-id="${x.id}" aria-label="Quitar">×</button></div>`;
+  openSheet(`<h3 class="sh-t">${esc(l.e)} ${esc(l.n)}</h3>
+    <form class="addh" data-form="litem" style="margin:0 0 6px"><input id="liIn" class="in" name="t" autocomplete="off" enterkeyhint="done" placeholder="Agregar a la lista"><button class="btn pri">Agregar</button></form>
+    ${open.length || done.length ? open.map(li).join('') + done.map(li).join('') : empty('Vacía. Agrega lo primero arriba.')}
+    <div class="acts" style="flex-wrap:wrap">${done.length ? '<button class="btn" data-act="lclear">Quitar tachadas</button><button class="btn" data-act="luncheck">Desmarcar todo</button>' : ''}<button class="btn" data-act="lshare">Compartir</button><button class="btn" data-act="ldel">Borrar lista</button></div>`);
+  if (keep) $('#sheet').scrollTop = top;
+}
+
+/* ============================ BUSCAR ============================ */
+function searchSheet() {
+  openSheet(`<h3 class="sh-t">Buscar</h3><input id="sIn" class="in big" type="search" autocomplete="off" enterkeyhint="search" placeholder="Tareas, notas, listas, gente…"><div id="sOut" style="margin-top:12px"></div>`, () => { const i = $('#sIn'); i.focus(); i.oninput = () => { $('#sOut').innerHTML = searchHtml(i.value); }; });
+}
+function searchHtml(q) {
+  const n = strip(q.trim().toLowerCase()); if (n.length < 2) return '<p class="hint">Escribe al menos 2 letras.</p>';
+  const has = s => strip(String(s || '').toLowerCase()).includes(n), out = [];
+  live(S.items).forEach(i => { if (has(i.title)) out.push(['item', i.id, shapeOf(i), i.title, (i.done ? 'Hecho' : 'Pendiente') + (i.date ? ' · ' + i.date : '')]); });
+  live(S.lists).forEach(l => { const hit = l.items.find(x => has(x.t)); if (has(l.n) || hit) out.push(['list', l.id, l.e, l.n, hit && !has(l.n) ? 'Lista · ' + hit.t : 'Lista']); });
+  live(S.notes).forEach(x => { if (has(x.text)) out.push(['note', x.id, '📝', x.text.slice(0, 80), 'Nota']); });
+  live(S.people).forEach(x => { if (has(x.name)) out.push(['person', x.id, '👤', x.name, 'Gente']); });
+  live(S.goals).forEach(x => { if (has(x.title)) out.push(['goal', x.id, x.emoji || '🎯', x.title, 'Meta']); });
+  live(S.moves).forEach(x => { if (has(x.note) || has(x.cat)) out.push(['move', x.id, '💸', x.note || x.cat, 'Movimiento · ' + (x.date || '')]); });
+  if (!out.length) return '<p class="hint">Nada coincide.</p>';
+  return out.slice(0, 30).map(([k, id, ic, t, sub]) => `<button class="sres" data-act="sgo" data-k="${k}" data-id="${id}"><span style="font-size:20px">${typeof ic === 'string' && ic.startsWith('<') ? ic : esc(ic)}</span><div><b>${esc(t)}</b><small>${esc(sub)}</small></div></button>`).join('');
+}
+const shapeOf = i => shape(i.cat, 20);
+
 /* ============================ EVENTOS ============================ */
 const A = {
+  search: () => searchSheet(),
+  lnew: () => listNewSheet(),
+  lopen: el => listSheet(el.dataset.id),
+  ltpl: el => { const t = LIST_TPL[+el.dataset.i]; const l = { id: uid(), n: t.n, e: t.e, items: t.i.map(x => ({ id: uid(), t: x, d: false })), created: Date.now(), updated: Date.now() }; S.lists.push(l); save(); render(); listSheet(l.id); },
+  ltog: el => { const l = S.lists.find(x => x.id === ui.list); const it = l && l.items.find(x => x.id === el.dataset.id); if (it) { it.d = !it.d; touch(l); save(); listSheet(l.id, true); render(); } },
+  lrm: el => { const l = S.lists.find(x => x.id === ui.list); if (l) { l.items = l.items.filter(x => x.id !== el.dataset.id); touch(l); save(); listSheet(l.id, true); render(); } },
+  lclear: () => { const l = S.lists.find(x => x.id === ui.list); if (l) { l.items = l.items.filter(x => !x.d); touch(l); save(); listSheet(l.id, true); render(); toast('Listo, quité lo tachado'); } },
+  luncheck: () => { const l = S.lists.find(x => x.id === ui.list); if (l) { l.items.forEach(x => { x.d = false; }); touch(l); save(); listSheet(l.id, true); render(); } },
+  lshare: () => { const l = S.lists.find(x => x.id === ui.list); if (!l) return; const txt = `${l.e} ${l.n}\n` + l.items.map(x => `${x.d ? '☑' : '☐'} ${x.t}`).join('\n'); if (navigator.share) navigator.share({ title: l.n, text: txt }).catch(() => {}); else if (navigator.clipboard) navigator.clipboard.writeText(txt).then(() => toast('Lista copiada')); },
+  ldel: () => { const id = ui.list; closeSheet(); softDel('lists', id, 'Lista borrada'); },
+  sgo: el => { const [k, id] = [el.dataset.k, el.dataset.id]; closeSheet(); if (k === 'item') { const it = S.items.find(x => x.id === id); if (it) itemSheet(it); } else if (k === 'list') listSheet(id); else { ui.tab = k === 'move' ? 'dinero' : 'mente'; ui.anim = true; render(); scrollTo(0, 0); } },
   tab: el => { ui.tab = el.dataset.tab; ui.anim = true; render(); scrollTo(0, 0); },
   new: () => itemSheet(null),
   toggle: el => toggleItem(el.dataset.id, el),
@@ -1090,6 +1153,8 @@ document.addEventListener('input', e => { if (e.target.dataset && e.target.datas
 document.addEventListener('submit', e => {
   const form = e.target.closest('[data-form]'); if (!form) return; e.preventDefault();
   const d = new FormData(form);
+  if (form.dataset.form === 'litem') { const l = S.lists.find(x => x.id === ui.list), t = (d.get('t') || '').trim(); if (l && t) { l.items.push({ id: uid(), t, d: false }); touch(l); save(); listSheet(l.id, true); render(); const i = $('#liIn'); if (i) i.focus(); } return; }
+  if (form.dataset.form === 'lnew') { const n = (d.get('n') || '').trim(); if (!n) return; const l = { id: uid(), n, e: (d.get('e') || '📝').trim() || '📝', items: [], created: Date.now(), updated: Date.now() }; S.lists.push(l); save(); render(); listSheet(l.id); return; }
   if (form.dataset.form === 'habit') { const name = (d.get('name') || '').trim(); if (!name) return; S.habits.push({ id: uid(), name, emoji: (d.get('emoji') || '✨').trim() || '✨', log: {}, updated: Date.now() }); }
   if (form.dataset.form === 'note') { const text = (d.get('text') || '').trim(); if (!text) return; S.notes.push({ id: uid(), text, pin: false, created: Date.now(), updated: Date.now() }); }
   save(); render();
@@ -1183,3 +1248,7 @@ if (typeof document !== 'undefined' && $('#view')) {
   setInterval(() => { if (!document.hidden) sync(); }, 90000);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) { render(); sync(); notifyDue(); focusTick(); } });
 }
+
+/* ---- se siente como app: sin zoom por pellizco ni doble toque ---- */
+['gesturestart', 'gesturechange', 'gestureend'].forEach(ev => document.addEventListener(ev, e => e.preventDefault()));
+document.addEventListener('touchmove', e => { if (e.touches.length > 1) e.preventDefault(); }, { passive: false });

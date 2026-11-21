@@ -76,6 +76,8 @@ Al completar algo que se repite, crea solo el siguiente.
 | **Gente** | Mente | A quién llevas tiempo sin escribirle, con cumpleaños anual automático en la agenda |
 | **Revisión semanal** | Mente (y aviso en Hoy los domingos y lunes) | Resumen de tu semana y 3 preguntas; tu respuesta se vuelve tarea importante |
 | **Deshacer** | Al borrar o completar | Aparece un botón durante 6 segundos |
+| **Listas** | Mente | Compras, viaje, mudanza o lo que quieras, con casillas, plantillas y botón de compartir |
+| **Buscar** | Lupa de la cabecera | Busca en tareas, listas, notas, gente, metas y gastos |
 | **Sin fecha** | Hoy | Las tareas sin fecha ya no se pierden |
 
 ## Si ya tenías Lumen publicado

@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Lumen · activar avisos</title>
+<style>
+  body{margin:0;font:16px/1.5 system-ui,sans-serif;background:#F0ECF7;color:#19173D}
+  main{max-width:640px;margin:0 auto;padding:20px 18px 60px}
+  h1{font-size:30px;margin:8px 0}
+  h2{font-size:19px;margin:28px 0 6px}
+  p{margin:6px 0}
+  input{width:100%;box-sizing:border-box;padding:12px;border:2px solid #19173D;border-radius:12px;font:inherit;background:#fff}
+  button{padding:11px 18px;border:2px solid #19173D;border-radius:24px;background:#FF4FA3;font:700 16px system-ui;cursor:pointer;margin-top:10px}
+  pre{background:#19173D;color:#F4F0FF;padding:12px;border-radius:12px;overflow:auto;white-space:pre-wrap;word-break:break-all;font-size:13px;margin:6px 0}
+  .c{display:flex;gap:8px;align-items:flex-start}.c pre{flex:1}.c button{margin-top:6px;padding:8px 12px;font-size:14px;background:#FFD426}
+  .k{font-weight:700;margin-top:14px}
+  [hidden]{display:none}
+  .warn{background:#FFD426;border:2px solid #19173D;border-radius:12px;padding:10px 12px;margin:14px 0}
+</style>
+</head>
+<body>
+<main>
+<h1>Activar avisos ✦</h1>
+<p>Esta página prepara las 3 llaves que necesita Supabase. <b>Todo se genera en tu navegador</b>; no se envía a ningún lado.</p>
+
+<h2>Paso 1 · Datos de tu proyecto</h2>
+<p>En Supabase: Project Settings → API → <b>Project URL</b>.</p>
+<input id="url" placeholder="https://xxxx.supabase.co" inputmode="url" autocapitalize="off">
+<p style="margin-top:10px">Tu correo (Apple y Google lo piden para identificar los avisos):</p>
+<input id="mail" type="email" placeholder="tu@correo.com" autocapitalize="off">
+<button id="go">Generar llaves</button>
+
+<div id="out" hidden>
+  <div class="warn">Guarda esta página abierta hasta terminar los pasos. Si la recargas se generan llaves nuevas y habría que repetir.</div>
+
+  <h2>Paso 2 · Pegar la base de datos</h2>
+  <p>Supabase → <b>SQL Editor</b> → New query. Pega el contenido de <code>supabase/setup.sql</code> del repo y toca Run.</p>
+
+  <h2>Paso 3 · Crear la función</h2>
+  <p>Supabase → <b>Edge Functions</b> → Deploy a new function → Via Editor. Nómbrala exactamente <code>lumen-push</code>, pega el contenido de <code>supabase/functions/lumen-push/index.ts</code> y despliega. Luego entra a la función y <b>apaga "Verify JWT"</b> (Enforce JWT verification).</p>
+
+  <h2>Paso 4 · Guardar las llaves secretas</h2>
+  <p>Edge Functions → <b>Secrets</b> → Add new secret. Crea estas 4 (nombre y valor):</p>
+  <div id="secrets"></div>
+
+  <h2>Paso 5 · Programar la revisión de cada minuto</h2>
+  <p>Vuelve al SQL Editor, pega esto y toca Run:</p>
+  <div class="c"><pre id="cron"></pre><button data-copy="cron">Copiar</button></div>
+
+  <h2>Paso 6 · En el celular</h2>
+  <p>Abre Lumen (en iPhone, desde el ícono de la pantalla de inicio) → Ajustes → conecta tu cuenta → <b>Activar avisos</b>. Debe llegarte un aviso de prueba.</p>
+</div>
+</main>
+<script>
+const b64u = u8 => btoa(String.fromCharCode(...u8)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+const rand = n => b64u(crypto.getRandomValues(new Uint8Array(n)));
+const $ = s => document.querySelector(s);
+const row = (k, v) => `<div class="k">${k}</div><div class="c"><pre>${v}</pre><button data-v="${v}">Copiar</button></div>`;
+$('#go').onclick = async () => {
+  const url = $('#url').value.trim().replace(/\/+$/, ''), mail = $('#mail').value.trim();
+  if (!/^https:\/\/.+\.supabase\.co$/.test(url)) return alert('Pega la Project URL completa, por ejemplo https://abcd.supabase.co');
+  if (!/.+@.+\..+/.test(mail)) return alert('Escribe tu correo');
+  const kp = await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify']);
+  const pub = b64u(new Uint8Array(await crypto.subtle.exportKey('raw', kp.publicKey)));
+  const priv = (await crypto.subtle.exportKey('jwk', kp.privateKey)).d;
+  const cron = rand(24);
+  $('#secrets').innerHTML = row('VAPID_PUBLIC_KEY', pub) + row('VAPID_PRIVATE_KEY', priv) + row('VAPID_SUBJECT', 'mailto:' + mail) + row('CRON_SECRET', cron);
+  $('#cron').textContent =
+`select cron.schedule('lumen-push', '* * * * *', $$
+  select net.http_post(
+    url := '${url}/functions/v1/lumen-push?run=1',
+    headers := '{"x-cron-secret":"${cron}"}'::jsonb
+  );
+$$);`;
+  $('#out').hidden = false; $('#out').scrollIntoView({ behavior: 'smooth' });
+};
+document.addEventListener('click', e => {
+  const b = e.target.closest('button[data-v],button[data-copy]'); if (!b) return;
+  const text = b.dataset.v || document.getElementById(b.dataset.copy).textContent;
+  navigator.clipboard.writeText(text).then(() => { const o = b.textContent; b.textContent = '¡Copiado!'; setTimeout(() => b.textContent = o, 1200); });
+});
+</script>
+</body>
+</html>

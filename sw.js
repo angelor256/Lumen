@@ -1,5 +1,5 @@
 /* Lumen · service worker: la app abre aunque no tengas internet */
-const V = 'lumen-v5';
+const V = 'lumen-v6';
 const SHELL = ['./', 'index.html', 'app.js', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png'];
 
 self.addEventListener('install', e => {
@@ -18,7 +18,7 @@ self.addEventListener('fetch', e => {
   }
   if (u.origin !== location.origin) return; // Supabase y demás: directo a la red
   // Archivos propios: primero la red (para que veas actualizaciones), si falla, la copia guardada
-  e.respondWith(fetch(r).then(res => { const cp = res.clone(); caches.open(V).then(c => c.put(r, cp)); return res; }).catch(() => caches.match(r).then(hit => hit || caches.match('index.html'))));
+  e.respondWith(fetch(r, { cache: 'no-store' }).then(res => { const cp = res.clone(); caches.open(V).then(c => c.put(r, cp)); return res; }).catch(() => caches.match(r).then(hit => hit || caches.match('index.html'))));
 });
 // Avisos push desde Supabase (llegan aunque la app esté cerrada)
 self.addEventListener('push', e => {

@@ -179,7 +179,7 @@ let S = (() => { try { const s = JSON.parse(localStorage.getItem(KEY)); if (s &&
 const COLS = ['items', 'habits', 'notes', 'moves', 'goals', 'people', 'checks', 'focus', 'lists'];
 S.cfg = S.cfg || {}; COLS.forEach(k => { S[k] = S[k] || []; });
 // Nube por defecto: la URL y la anon key son públicas por diseño (la seguridad la da RLS). Así, al reinstalar solo falta tu correo y contraseña.
-const APP_VER = 'v6';
+const APP_VER = 'v7';
 const CLOUD = { url: 'https://uramhnknnwrdnvzugbyy.supabase.co', key: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVyYW1obmtubndyZG52enVnYnl5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTUxMTI2NjIsImV4cCI6MjExMDY4ODY2Mn0.mWFX49XtUCCvBK_pRi1a8Huy9nXyAtrhPVVgpmJOCsY' };
 if (!S.cfg.url) S.cfg.url = CLOUD.url;
 if (!S.cfg.key) S.cfg.key = CLOUD.key;
@@ -946,7 +946,7 @@ function vMente() {
   ${listsHtml()}
   <div id="s-rit" class="anchor"></div>
   ${sec('Rituales', H.length)}
-  ${H.map(h => { const s = streak(h); return `<div class="hab"><div class="he">${esc(h.emoji)}</div><div class="hb"><b>${esc(h.name)}${h.rtime ? ` <small class="rml">🔔 ${esc(h.rtime)}</small>` : ''}</b><div class="hd">${days.map(d => `<button class="hdot ${h.log[d] ? 'on' : ''} ${d === t ? 'now' : ''}" data-act="hday" data-id="${h.id}" data-d="${d}" aria-label="${rel(d)}" aria-pressed="${!!h.log[d]}">${DAYS_S[fromYmd(d).getDay()][0]}</button>`).join('')}</div></div><div class="stk">${s > 0 ? `${s}<small>${s === 1 ? 'día' : 'días'}</small>` : ''}</div><button class="x ${h.pin ? 'bon' : ''}" data-act="hpin" data-id="${h.id}" aria-label="${h.pin ? 'Quitar de Hoy' : 'Fijar en Hoy'}" aria-pressed="${!!h.pin}" style="font-size:17px;line-height:1">📌</button>${bell('habits', h)}<button class="x" data-act="hdel" data-id="${h.id}" aria-label="Borrar ritual">${I.x}</button></div>`; }).join('')}
+  ${H.map(h => { const st = streak(h); return `<div class="hab"><div class="htop"><div class="he">${esc(h.emoji)}</div><div class="hb"><b>${esc(h.name)}</b>${st > 0 || h.rtime ? `<small class="rml">${st > 0 ? `🔥 ${st} ${st === 1 ? 'día' : 'días'}` : ''}${st > 0 && h.rtime ? ' · ' : ''}${h.rtime ? `🔔 ${esc(h.rtime)}` : ''}</small>` : ''}</div><div class="hbt"><button class="x ${h.pin ? 'bon' : ''}" data-act="hpin" data-id="${h.id}" aria-label="${h.pin ? 'Quitar de Hoy' : 'Fijar en Hoy'}" aria-pressed="${!!h.pin}">📌</button>${bell('habits', h)}<button class="x" data-act="hdel" data-id="${h.id}" aria-label="Borrar ritual">${I.x}</button></div></div><div class="hd">${days.map(d => `<button class="hdot ${h.log[d] ? 'on' : ''} ${d === t ? 'now' : ''}" data-act="hday" data-id="${h.id}" data-d="${d}" aria-label="${rel(d)}" aria-pressed="${!!h.log[d]}">${DAYS_S[fromYmd(d).getDay()][0]}</button>`).join('')}</div></div>`; }).join('')}
   <form class="addh" data-form="habit"><input class="in" name="emoji" maxlength="2" value="✨" aria-label="Emoji" style="width:62px;text-align:center"><input class="in" name="name" placeholder="Nuevo ritual, por ejemplo: estirarme" required><button class="btn">Añadir</button></form>
   <div id="s-met" class="anchor"></div>
   ${sec('Metas', G.length)}
@@ -1005,7 +1005,7 @@ const remLabel = r => {
   const t = ymd(new Date()), tm = addDays(t, 1), d = r.date === t ? 'hoy' : r.date === tm ? 'mañana' : `${fromYmd(r.date).getDate()} ${MONTHS_S[fromYmd(r.date).getMonth()]}`;
   return `${d} ${r.time || ''}${r.rep ? ' · ' + ({ daily: 'cada día', weekly: 'cada semana', monthly: 'cada mes' }[r.rep] || '') : ''}`.trim();
 };
-const bell = (col, o) => { const on = col === 'habits' ? !!o.rtime : !!(o.remind && o.remind.date); return `<button class="x ${on ? 'bon' : ''}" data-act="remind" data-col="${col}" data-id="${o.id}" aria-label="${on ? 'Cambiar recordatorio' : 'Recordarme'}" style="font-size:17px;line-height:1">🔔</button>`; };
+const bell = (col, o) => { const on = col === 'habits' ? !!o.rtime : !!(o.remind && o.remind.date); return `<button class="x ${on ? 'bon' : ''}" data-act="remind" data-col="${col}" data-id="${o.id}" aria-label="${on ? 'Cambiar recordatorio' : 'Recordarme'}">🔔</button>`; };
 function remindSheet(col, id) {
   const o = S[col].find(x => x.id === id && !x.deleted); if (!o) return;
   RM = { col, id };

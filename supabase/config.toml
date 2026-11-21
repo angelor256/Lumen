@@ -1,0 +1,3 @@
+# Solo si usas la CLI de Supabase. Si pegas la función en el panel, desactiva "Verify JWT" ahí.
+[functions.lumen-push]
+verify_jwt = false

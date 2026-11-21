@@ -84,11 +84,31 @@ No hay que tocar la base de datos. Reemplaza en tu repo **`index.html`**, **`app
 Abre la app en cada aparato una vez con internet para que se actualice.
 Tus datos anteriores se conservan; las secciones nuevas empiezan vacías.
 
-## 5. Automatizar desde afuera (siguiente nivel)
+## 5. Avisos al celular (versión 3)
 
-Como todo vive en la tabla `life_data`, puedes leerla con un script (Python, por ejemplo) y mandarte avisos reales
-al celular por Telegram/WhatsApp con un cron gratis en GitHub Actions. Los avisos nativos del navegador solo
-saltan cuando abres la app; para avisos con la app cerrada necesitas ese script o un servidor de Web Push.
+Lumen ahora es **recordatorios y pagos**: escribes "pagar luz 45 el 25 cada mes" y te llega una notificación real, **aunque la app esté cerrada**.
+
+| Cosa | Cuándo te avisa |
+|---|---|
+| Pago | El día antes a las 9:00 y el día que vence |
+| Cita con hora | 1 hora antes y a la hora |
+| Tarea con hora | A esa hora |
+| Cualquier cosa con fecha, sin hora | A las 9:00 de ese día |
+
+Los avisos traen botones **Hecho ✓** y **En 1 hora** (en Android y computadora; en iPhone tocas el aviso y abres la app).
+
+### Instalación (una sola vez, ~10 min)
+
+1. Abre `setup.html` de tu sitio (`https://TU-USUARIO.github.io/lumen/setup.html`), pega tu Project URL y tu correo. Genera las llaves en tu navegador y te da los valores a copiar.
+2. Supabase → **SQL Editor**: pega `supabase/setup.sql` y Run.
+3. Supabase → **Edge Functions** → nueva función `lumen-push`: pega `supabase/functions/lumen-push/index.ts`, despliega y **apaga "Verify JWT"**.
+4. Edge Functions → **Secrets**: crea `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` y `CRON_SECRET` con lo que te dio `setup.html`.
+5. SQL Editor: pega el bloque de "programar" que te dio `setup.html` (revisa cada minuto qué avisos tocan).
+6. En el celular: abre Lumen → Ajustes → conecta tu cuenta → **Activar avisos**. Te llega un aviso de prueba.
+
+**iPhone:** los avisos solo funcionan si Lumen está instalada en la pantalla de inicio (Compartir → Añadir a pantalla de inicio) y con iOS 16.4 o más nuevo. Abre la app desde ese ícono para activarlos.
+
+Los avisos se programan cuando la app sincroniza, así que si agregas algo, ábrela un momento (o espera ~2 s con internet) para que quede programado.
 
 ## Respaldo
 

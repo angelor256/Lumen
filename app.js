@@ -374,7 +374,7 @@ function itemSheet(it, preset) {
   f = { type: it ? it.type : (preset?.type || 'task'), cat: it ? it.cat : (preset?.cat || 'personal'), star: it ? !!it.star : !!(preset && preset.star) };
   fSubs = it && it.subs ? it.subs.map(s => ({ ...s })) : [];
   const v = it || preset || {};
-  const types = [['task', 'Tarea'], ['pay', 'Pago'], ['appt', 'Cita']].concat(it ? [] : [['note', 'Nota']]);
+  const types = [['task', 'Tarea'], ['pay', 'Pago'], ['appt', 'Cita']];
   openSheet(`
     <h3 class="sh-t">${it ? 'Editar' : 'Nuevo'}</h3>
     <input id="fTitle" class="in big" autocomplete="off" enterkeyhint="done" list="hist" placeholder="${esc(PH[Math.floor(Math.random() * PH.length)])}" value="${esc(v.title || '')}">
@@ -459,7 +459,8 @@ function settingsSheet() {
     ${ss ? '' : `<div class="g2"><label>Correo<input id="cMail" type="email" class="in" autocapitalize="off"></label><label>Contraseña<input id="cPass" type="password" class="in"></label></div>`}
     <div class="acts wrap">${ss ? '<button class="btn" data-act="cl-sync">Sincronizar ahora</button><button class="btn" data-act="cl-out">Salir</button>' : '<button class="btn pri" data-act="cl-in">Entrar</button><button class="btn" data-act="cl-up">Crear cuenta</button>'}</div>
     <h4 class="sh-h">Avisos y datos</h4>
-    <div class="acts wrap"><button class="btn" data-act="notif">Activar avisos</button><button class="btn" data-act="ics">Exportar al calendario</button><button class="btn" data-act="exp">Respaldo</button><button class="btn" data-act="imp">Importar</button><button class="btn" data-act="demo">Borrar ejemplos</button></div>
+    <p class="hint">${pushErr ? 'Problema con los avisos: ' + esc(pushErr) : c.push ? 'Avisos activos en este celular. Llegan aunque la app esté cerrada.' : 'Activa los avisos para que Lumen te escriba a la hora exacta.'}</p>
+    <div class="acts wrap"><button class="btn pri" data-act="notif">${c.push ? 'Reactivar avisos' : 'Activar avisos'}</button>${c.push ? '<button class="btn" data-act="ptest">Probar aviso</button><button class="btn" data-act="poff">Apagar</button>' : ''}<button class="btn" data-act="ics">Exportar al calendario</button><button class="btn" data-act="exp">Respaldo</button><button class="btn" data-act="imp">Importar</button><button class="btn" data-act="demo">Borrar ejemplos</button></div>
     <input type="file" id="impFile" accept="application/json" hidden>
     <div class="acts"><button class="btn pri" data-act="ssave">Listo</button></div>`,
     () => {
@@ -478,7 +479,7 @@ function readCfg() {
 }
 
 /* ============================ NUBE (Supabase por REST) ============================ */
-let syncing = false, lastErr = '';
+let syncing = false, lastErr = '', pushErr = '';
 const syncState = () => syncing ? 'busy' : (S.cfg.url && S.sess ? (lastErr ? 'err' : 'ok') : 'off');
 async function sb(path, { method = 'GET', body, token, headers = {} } = {}) {
   const { url, key } = S.cfg;
@@ -523,7 +524,9 @@ async function sync(manual) {
     }
     COLS.forEach(k => { S[k] = purge(S[k]); });
     await sb('/rest/v1/life_data', { method: 'POST', token: t, headers: { Prefer: 'resolution=merge-duplicates,return=minimal' }, body: { user_id: S.sess.uid, data: { ...remote, ...colsData() }, updated_at: new Date().toISOString() } });
-    lastErr = ''; if (manual) toast('Sincronizado');
+    lastErr = '';
+    if (S.cfg.push) { try { await syncReminders(t); pushErr = ''; } catch (e) { pushErr = e.message; } }
+    if (manual) toast(pushErr ? 'Sincronizado, pero los avisos fallaron: ' + pushErr : 'Sincronizado');
   } catch (e) { lastErr = e.message; if (manual) toast('No pude sincronizar: ' + e.message); }
   finally { syncing = false; persist(); render(); }
 }
@@ -554,7 +557,7 @@ function exportICS() {
   download('lumen.ics', 'text/calendar', L.join('\r\n'));
 }
 async function notifyDue(force) {
-  if (!('Notification' in window) || Notification.permission !== 'granted') return;
+  if (S.cfg.push || !('Notification' in window) || Notification.permission !== 'granted') return;
   const t = ymd(new Date());
   if (!force && localStorage.getItem('lumen.notified') === t) return;
   const due = live(S.items).filter(i => !i.done && i.date && i.date <= t);
@@ -855,16 +858,13 @@ function vHoy() {
     <p class="dateline">${DAYS_FULL[d.getDay()]} de ${MONTHS[d.getMonth()]}</p>
     <p class="say">${greet()}${S.cfg.name ? ', ' + esc(S.cfg.name) : ''}. ${say}</p>
   </section>
-  ${H.length ? `<div class="habs">${H.map(h => `<button class="hchip ${h.log[t] ? 'on' : ''}" data-act="hday" data-id="${h.id}" data-d="${t}" aria-pressed="${!!h.log[t]}"><span>${esc(h.emoji)}</span>${esc(h.name)}</button>`).join('')}</div>` : ''}
-  ${checkCard()}
+  ${pushBanner()}
   ${fav.length ? sec('Lo importante', fav.length) + fav.map(row).join('') : ''}
   ${overList.length ? sec('Atrasado', overList.length, 'late') + overList.map(row).join('') : ''}
   ${sec('Hoy', todayList.length)}
   ${todayList.length ? todayList.map(row).join('') : (fav.length ? '' : empty('Nada agendado. Toca el + y escribe como hablas.'))}
   ${up.length ? sec('Esta semana', up.length) + grouped(up) : ''}
   ${undated.length ? sec('Sin fecha', undated.length) + (ui.undAll ? undated : undated.slice(0, 5)).map(row).join('') + (undated.length > 5 ? `<button class="btn addbtn" data-act="und">${ui.undAll ? 'Ver menos' : 'Ver las ' + undated.length}</button>` : '') : ''}
-  ${folks.map(f => `<div class="idea">${shape('personal', 22)}<p>Hace <b>${daysSince(f.last)} días</b> que no hablas con <b>${esc(f.name)}</b>.</p><button class="btn" data-act="p-done" data-id="${f.id}">Ya hablamos</button></div>`).join('')}
-  ${reviewDue() ? `<div class="idea">${shape('ideas', 22)}<p>${d.getDay() === 0 ? 'Es domingo, buen momento para cerrar la semana.' : 'Empieza la semana mirando la que pasó.'}</p><button class="btn pri" data-act="review">Revisar</button></div>` : ''}
   ${mp.length ? `<div class="sticker"><b>${money(mpSum)}</b><span>por pagar este mes en ${mp.length} ${mp.length === 1 ? 'pago' : 'pagos'}</span></div>` : ''}
   ${sg ? `<div class="idea">${shape('ideas', 22)}<p>Has pagado <b>${esc(sg.title)}</b> más de una vez. ¿Lo dejo repetirse solo cada mes?</p><button class="btn" data-act="mkrepeat" data-id="${sg.id}">Sí, repetir</button></div>` : ''}`;
 }
@@ -961,7 +961,10 @@ const A = {
   'cl-in': () => login(false), 'cl-up': () => login(true),
   'cl-out': () => { S.sess = null; persist(); settingsSheet(); render(); },
   'cl-sync': () => { readCfg(); persist(); sync(true); },
-  notif: async () => { if (!('Notification' in window)) return toast('Este navegador no permite avisos'); const p = await Notification.requestPermission(); toast(p === 'granted' ? 'Avisos activados' : 'Avisos bloqueados'); if (p === 'granted') notifyDue(true); },
+  notif: () => enablePush(),
+  ptest: () => testPush(),
+  poff: () => disablePush(),
+  pushgo: () => (S.sess ? enablePush() : (toast('Primero conecta tu cuenta de la nube'), settingsSheet())),
   ics: () => exportICS(),
   exp: () => download('lumen-respaldo-' + ymd(new Date()) + '.json', 'application/json', JSON.stringify({ items: S.items, habits: S.habits, notes: S.notes }, null, 1)),
   imp: () => $('#impFile').click(),
@@ -1092,11 +1095,90 @@ document.addEventListener('submit', e => {
   save(); render();
 });
 
+
+/* ============================ AVISOS (push al celular) ============================ */
+const FN = () => (S.cfg.url || '') + '/functions/v1/lumen-push';
+const b64u = s => { const r = atob((s + '='.repeat((4 - s.length % 4) % 4)).replace(/-/g, '+').replace(/_/g, '/')); return Uint8Array.from(r, c => c.charCodeAt(0)); };
+const atLocal = (date, h, m) => { const [y, mo, d] = date.split('-').map(Number); return new Date(y, mo - 1, d, h, m, 0, 0); };
+// Qué avisos necesita cada cosa. Pago: el día antes y el día. Cita con hora: 1 h antes y a la hora. Tarea: a su hora (o a las 9).
+function reminderRows(items, uidv, now = new Date(), dayHour = 9, fmt = n => '$' + n) {
+  const rows = [], lo = now.getTime() - 15 * 60e3, hi = now.getTime() + 60 * 864e5;
+  const add = (it, kind, when, body) => {
+    const t = when.getTime(); if (t < lo || t > hi) return;
+    const id = `${it.id}_${kind}_${ymd(when)}_${pad(when.getHours())}${pad(when.getMinutes())}`;
+    rows.push({ id, user_id: uidv, item_id: it.id, title: it.title, body, remind_at: when.toISOString(), kind: 'auto' });
+  };
+  items.forEach(it => {
+    if (it.deleted || it.done || !it.date) return;
+    const [h, m] = it.time ? it.time.split(':').map(Number) : [dayHour, 0];
+    const at = atLocal(it.date, h, m), amt = it.amount != null ? ' · ' + fmt(it.amount) : '';
+    if (it.type === 'pay') {
+      add(it, 'pre', atLocal(addDays(it.date, -1), dayHour, 0), 'Mañana vence' + amt);
+      add(it, 'at', at, 'Vence hoy' + amt);
+    } else if (it.type === 'appt' && it.time) {
+      add(it, 'pre', new Date(at.getTime() - 60 * 60e3), 'En 1 hora · ' + it.time);
+      add(it, 'at', at, 'Ahora · ' + it.time);
+    } else add(it, 'at', at, it.time ? 'Hoy · ' + it.time : 'Para hoy');
+  });
+  return rows;
+}
+async function syncReminders(t) {
+  const u = S.sess.uid, want = reminderRows(S.items, u, new Date(), S.cfg.dayHour || 9, money);
+  const have = await sb(`/rest/v1/reminders?select=id&user_id=eq.${u}&kind=eq.auto`, { token: t });
+  const keep = new Set(want.map(r => r.id)), gone = (have || []).map(r => r.id).filter(id => !keep.has(id));
+  if (want.length) await sb('/rest/v1/reminders', { method: 'POST', token: t, headers: { Prefer: 'resolution=merge-duplicates,return=minimal' }, body: want });
+  for (let k = 0; k < gone.length; k += 40) await sb(`/rest/v1/reminders?user_id=eq.${u}&id=in.(${gone.slice(k, k + 40).join(',')})`, { method: 'DELETE', token: t });
+}
+const isIOS = () => /iphone|ipad|ipod/i.test(navigator.userAgent);
+const isStandalone = () => navigator.standalone || (matchMedia && matchMedia('(display-mode: standalone)').matches);
+async function enablePush(silent) {
+  try {
+    if (!S.sess) throw new Error('Primero conecta la nube en Ajustes');
+    if (isIOS() && !isStandalone()) throw new Error('En iPhone: abre Lumen desde el ícono de tu pantalla de inicio (Compartir → Añadir a pantalla de inicio)');
+    if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) throw new Error('Este navegador no permite avisos');
+    if (silent === true && Notification.permission !== 'granted') return;
+    if (Notification.permission !== 'granted' && (await Notification.requestPermission()) !== 'granted') throw new Error('Los avisos están bloqueados; actívalos en los ajustes del celular');
+    const reg = await navigator.serviceWorker.ready;
+    const r = await fetch(FN() + '?a=key', { headers: { apikey: S.cfg.key } }).catch(() => null);
+    const kj = r && r.ok ? await r.json().catch(() => null) : null;
+    if (!kj || !kj.key) throw new Error('Falta crear la función lumen-push en Supabase (mira SETUP)');
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64u(kj.key) });
+    const t = await token();
+    await sb('/rest/v1/push_subs', { method: 'POST', token: t, headers: { Prefer: 'resolution=merge-duplicates,return=minimal' }, body: { endpoint: sub.endpoint, user_id: S.sess.uid, sub: sub.toJSON() } });
+    const first = !S.cfg.push; S.cfg.push = 1; pushErr = ''; persist();
+    await syncReminders(t);
+    if (silent !== true) { toast('Avisos activados'); if ($('#sheet').classList.contains('open')) settingsSheet(); if (first) testPush(); }
+    render();
+  } catch (e) { pushErr = e.message; if (silent !== true) toast(e.message); if ($('#sheet') && $('#sheet').classList.contains('open')) settingsSheet(); }
+}
+async function testPush() {
+  try {
+    const t = await token();
+    const r = await fetch(FN() + '?a=test', { headers: { apikey: S.cfg.key, Authorization: 'Bearer ' + t } });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || 'Error ' + r.status);
+    toast(j.ok ? 'Aviso de prueba enviado, debería llegar en segundos' : 'No hay ningún aparato registrado; toca Reactivar avisos');
+  } catch (e) { toast('No se pudo enviar la prueba: ' + e.message); }
+}
+async function disablePush() {
+  try {
+    const reg = await navigator.serviceWorker.ready, sub = await reg.pushManager.getSubscription();
+    if (sub) { const t = await token(); await sb(`/rest/v1/push_subs?endpoint=eq.${encodeURIComponent(sub.endpoint)}`, { method: 'DELETE', token: t }).catch(() => {}); await sub.unsubscribe(); }
+  } catch (e) {}
+  S.cfg.push = 0; persist(); toast('Avisos apagados'); settingsSheet(); render();
+}
+function pushBanner() {
+  if (S.cfg.push && !pushErr) return '';
+  const txt = pushErr ? `Los avisos tienen un problema: ${esc(pushErr)}` : 'Activa los avisos y Lumen te escribe al celular a la hora de cada cosa, aunque la app esté cerrada.';
+  return `<div class="idea">${shape('ideas', 22)}<p>${txt}</p><button class="btn pri" data-act="pushgo">${pushErr ? 'Reintentar' : 'Activar'}</button></div>`;
+}
+
 /* ============================ ARRANQUE ============================ */
 if (typeof document !== 'undefined' && $('#view')) {
   render();
   if ('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('sw.js').catch(() => {});
-  sync(); notifyDue(); focusTick();
+  sync(); notifyDue(); focusTick(); if (S.cfg.push) enablePush(true);
   setInterval(focusTick, 1000);
   setInterval(() => { if (!document.hidden) sync(); }, 90000);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) { render(); sync(); notifyDue(); focusTick(); } });

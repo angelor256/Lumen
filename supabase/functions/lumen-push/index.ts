@@ -49,9 +49,16 @@ async function loadData(user: string) {
   const { data } = await db.from("life_data").select("data").eq("user_id", user).maybeSingle();
   return (data?.data ?? {}) as Record<string, any>;
 }
+const MIND = ["notes", "lists", "goals", "habits"];
+const findMind = (d: Record<string, any>, id: string) => {
+  for (const k of MIND) { const o = (d[k] ?? []).find((x: any) => x.id === id); if (o) return { k, o }; }
+  return null;
+};
 const itemOpen = (d: Record<string, any>, id: string) => {
   const it = (d.items ?? []).find((x: any) => x.id === id);
-  return !!it && !it.done && !it.deleted;
+  if (it) return !it.done && !it.deleted;
+  const m = findMind(d, id);
+  return !!m && !m.o.deleted; // avisos de Mente: notas, listas, metas y rituales
 };
 
 /* ---------- envío ---------- */
@@ -133,7 +140,16 @@ async function action(a: string, id: string, t: string) {
     d.items = items;
     await db.from("life_data").update({ data: d, updated_at: new Date().toISOString() }).eq("user_id", r.user_id);
   }
-  await db.from("reminders").delete().eq("item_id", r.item_id).is("sent_at", null);
+  // Mente: "Hecho" apaga el aviso de una sola vez; los que se repiten (y los rituales) siguen
+  let keep = false;
+  if (!it) {
+    const m = findMind(d, r.item_id);
+    if (m) {
+      if (m.k === "habits" || m.o.remind?.rep) keep = true;
+      else if (m.o.remind) { m.o.remind = null; m.o.updated = Date.now(); await db.from("life_data").update({ data: d, updated_at: new Date().toISOString() }).eq("user_id", r.user_id); }
+    }
+  }
+  if (!keep) await db.from("reminders").delete().eq("item_id", r.item_id).is("sent_at", null);
   return json({ ok: true, done: true });
 }
 

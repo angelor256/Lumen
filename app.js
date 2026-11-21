@@ -178,6 +178,11 @@ function seed() {
 let S = (() => { try { const s = JSON.parse(localStorage.getItem(KEY)); if (s && s.items) return s; } catch (e) {} return seed(); })();
 const COLS = ['items', 'habits', 'notes', 'moves', 'goals', 'people', 'checks', 'focus', 'lists'];
 S.cfg = S.cfg || {}; COLS.forEach(k => { S[k] = S[k] || []; });
+// Nube por defecto: la URL y la anon key son públicas por diseño (la seguridad la da RLS). Así, al reinstalar solo falta tu correo y contraseña.
+const APP_VER = 'v6';
+const CLOUD = { url: 'https://uramhnknnwrdnvzugbyy.supabase.co', key: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVyYW1obmtubndyZG52enVnYnl5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTUxMTI2NjIsImV4cCI6MjExMDY4ODY2Mn0.mWFX49XtUCCvBK_pRi1a8Huy9nXyAtrhPVVgpmJOCsY' };
+if (!S.cfg.url) S.cfg.url = CLOUD.url;
+if (!S.cfg.key) S.cfg.key = CLOUD.key;
 const colsData = () => Object.fromEntries(COLS.map(k => [k, S[k]]));
 const persist = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} };
 let pushTimer;
@@ -458,14 +463,16 @@ function settingsSheet() {
     <label style="margin-bottom:14px">Presupuesto mensual para gastos (opcional)<input id="sBudget" inputmode="decimal" class="in" placeholder="0" value="${c.budget || ''}"></label>
     <div class="seg" id="sTheme"><button type="button" data-th="papel" class="${S.theme !== 'noche' ? 'on' : ''}">Papel</button><button type="button" data-th="noche" class="${S.theme === 'noche' ? 'on' : ''}">Noche</button></div>
     <h4 class="sh-h">Nube (Supabase)</h4>
-    <p class="hint">${ss ? `Conectado como <b>${esc(ss.email)}</b>. Se sincroniza solo.` : 'Para tener tus datos en todos tus aparatos. Mira el README.md para crear tu proyecto gratis.'}</p>
+    <p class="hint">${ss ? `Conectado como <b>${esc(ss.email)}</b>. Se sincroniza solo.` : 'Entra con tu correo y contraseña para tener tus datos en todos tus aparatos y no perderlos si reinstalas.'}</p>
+    <details class="adv"><summary>Avanzado: otro proyecto de Supabase</summary>
     <label>URL del proyecto<input id="cUrl" class="in" inputmode="url" autocapitalize="off" placeholder="https://xxxx.supabase.co" value="${esc(c.url || '')}"></label>
-    <label>Anon key<input id="cKey" class="in" autocapitalize="off" placeholder="eyJ..." value="${esc(c.key || '')}"></label>
+    <label>Anon key<input id="cKey" class="in" autocapitalize="off" placeholder="eyJ..." value="${esc(c.key || '')}"></label></details>
     ${ss ? '' : `<div class="g2"><label>Correo<input id="cMail" type="email" class="in" autocapitalize="off"></label><label>Contraseña<input id="cPass" type="password" class="in"></label></div>`}
     <div class="acts wrap">${ss ? '<button class="btn" data-act="cl-sync">Sincronizar ahora</button><button class="btn" data-act="cl-out">Salir</button>' : '<button class="btn pri" data-act="cl-in">Entrar</button><button class="btn" data-act="cl-up">Crear cuenta</button>'}</div>
     <h4 class="sh-h">Avisos y datos</h4>
     <p class="hint">${pushErr ? 'Problema con los avisos: ' + esc(pushErr) : c.push ? 'Avisos activos en este celular. Llegan aunque la app esté cerrada.' : 'Activa los avisos para que Lumen te escriba a la hora exacta.'}</p>
     <div class="acts wrap"><button class="btn pri" data-act="notif">${c.push ? 'Reactivar avisos' : 'Activar avisos'}</button>${c.push ? '<button class="btn" data-act="ptest">Probar aviso</button><button class="btn" data-act="poff">Apagar</button>' : ''}<button class="btn" data-act="ics">Exportar al calendario</button><button class="btn" data-act="exp">Respaldo</button><button class="btn" data-act="imp">Importar</button><button class="btn" data-act="demo">Borrar ejemplos</button></div>
+    <p class="hint" style="margin-top:14px">Lumen ${APP_VER} · <button class="btn" data-act="upd" style="padding:6px 12px">Buscar actualización</button></p>
     <input type="file" id="impFile" accept="application/json" hidden>
     <div class="acts"><button class="btn pri" data-act="ssave">Listo</button></div>`,
     () => {
@@ -525,6 +532,8 @@ async function sync(manual) {
     let remote = {};
     if (rows && rows[0] && rows[0].data) {
       remote = rows[0].data;
+      // Si la nube ya tiene tus cosas, los ejemplos de esta instalación nueva sobran
+      if (COLS.some(k => (remote[k] || []).some(x => !x.demo && !x.deleted))) COLS.forEach(k => { const rid = new Set((remote[k] || []).map(x => x.id)); S[k] = S[k].filter(x => !x.demo || rid.has(x.id)); });
       COLS.forEach(k => { S[k] = mergeCol(S[k], remote[k] || []); });
     }
     COLS.forEach(k => { S[k] = purge(S[k]); });
@@ -844,6 +853,19 @@ function reviewSheet() {
 }
 
 /* ---------- vistas (Hoy, Dinero, Mente) ---------- */
+function cloudBanner() {
+  if (S.sess && !lastErr) return '';
+  const off = /fetch|network|internet/i.test(lastErr);
+  const msg = !S.sess ? 'Entra con tu correo para guardar todo en la nube. Si cambias de celular o reinstalas la app, no pierdes nada.' : off ? 'Sin internet: lo nuevo se guardará en la nube al volver la conexión.' : 'No se está guardando en la nube: ' + lastErr;
+  return `<div class="idea">${shape('citas', 22)}<p>${esc(msg)}</p>${off ? '' : `<button class="btn" data-act="settings">${S.sess ? 'Ver' : 'Entrar'}</button>`}</div>`;
+}
+function pinnedHabits() {
+  const t = ymd(new Date()), H = live(S.habits), P = H.filter(h => h.pin);
+  if (!H.length) return '';
+  if (!P.length) return '<p class="hint" style="margin:14px 2px 0">Toca 📌 en un ritual (pestaña Mente) para fijarlo aquí y marcarlo con un toque.</p>';
+  const dn = P.filter(h => h.log[t]).length;
+  return sec('Rituales', `${dn}/${P.length}`) + `<div class="hrow">${P.map(h => { const st = streak(h); return `<button class="hchip ${h.log[t] ? 'on' : ''}" data-act="hday" data-id="${h.id}" data-d="${t}" aria-pressed="${!!h.log[t]}"><span>${esc(h.emoji)}</span>${esc(h.name)}${st > 1 ? ` <small>🔥${st}</small>` : ''}</button>`; }).join('')}</div>`;
+}
 function vHoy() {
   const d = new Date(), t = ymd(d);
   const { today, over, done, total } = todaySet();
@@ -863,7 +885,8 @@ function vHoy() {
     <p class="dateline">${DAYS_FULL[d.getDay()]} de ${MONTHS[d.getMonth()]}</p>
     <p class="say">${greet()}${S.cfg.name ? ', ' + esc(S.cfg.name) : ''}. ${say}</p>
   </section>
-  ${pushBanner()}
+  ${cloudBanner()}${pushBanner()}
+  ${pinnedHabits()}
   ${fav.length ? sec('Lo importante', fav.length) + fav.map(row).join('') : ''}
   ${overList.length ? sec('Atrasado', overList.length, 'late') + overList.map(row).join('') : ''}
   ${sec('Hoy', todayList.length)}
@@ -923,7 +946,7 @@ function vMente() {
   ${listsHtml()}
   <div id="s-rit" class="anchor"></div>
   ${sec('Rituales', H.length)}
-  ${H.map(h => { const s = streak(h); return `<div class="hab"><div class="he">${esc(h.emoji)}</div><div class="hb"><b>${esc(h.name)}${h.rtime ? ` <small class="rml">🔔 ${esc(h.rtime)}</small>` : ''}</b><div class="hd">${days.map(d => `<button class="hdot ${h.log[d] ? 'on' : ''} ${d === t ? 'now' : ''}" data-act="hday" data-id="${h.id}" data-d="${d}" aria-label="${rel(d)}" aria-pressed="${!!h.log[d]}">${DAYS_S[fromYmd(d).getDay()][0]}</button>`).join('')}</div></div><div class="stk">${s > 0 ? `${s}<small>${s === 1 ? 'día' : 'días'}</small>` : ''}</div>${bell('habits', h)}<button class="x" data-act="hdel" data-id="${h.id}" aria-label="Borrar ritual">${I.x}</button></div>`; }).join('')}
+  ${H.map(h => { const s = streak(h); return `<div class="hab"><div class="he">${esc(h.emoji)}</div><div class="hb"><b>${esc(h.name)}${h.rtime ? ` <small class="rml">🔔 ${esc(h.rtime)}</small>` : ''}</b><div class="hd">${days.map(d => `<button class="hdot ${h.log[d] ? 'on' : ''} ${d === t ? 'now' : ''}" data-act="hday" data-id="${h.id}" data-d="${d}" aria-label="${rel(d)}" aria-pressed="${!!h.log[d]}">${DAYS_S[fromYmd(d).getDay()][0]}</button>`).join('')}</div></div><div class="stk">${s > 0 ? `${s}<small>${s === 1 ? 'día' : 'días'}</small>` : ''}</div><button class="x ${h.pin ? 'bon' : ''}" data-act="hpin" data-id="${h.id}" aria-label="${h.pin ? 'Quitar de Hoy' : 'Fijar en Hoy'}" aria-pressed="${!!h.pin}" style="font-size:17px;line-height:1">📌</button>${bell('habits', h)}<button class="x" data-act="hdel" data-id="${h.id}" aria-label="Borrar ritual">${I.x}</button></div>`; }).join('')}
   <form class="addh" data-form="habit"><input class="in" name="emoji" maxlength="2" value="✨" aria-label="Emoji" style="width:62px;text-align:center"><input class="in" name="name" placeholder="Nuevo ritual, por ejemplo: estirarme" required><button class="btn">Añadir</button></form>
   <div id="s-met" class="anchor"></div>
   ${sec('Metas', G.length)}
@@ -1028,6 +1051,8 @@ const shapeOf = i => shape(i.cat, 20);
 
 /* ============================ EVENTOS ============================ */
 const A = {
+  hpin: el => { const h = S.habits.find(x => x.id === el.dataset.id); if (h) { h.pin = !h.pin; touch(h); save(); render(); toast(h.pin ? 'Fijado en Hoy' : 'Quitado de Hoy'); } },
+  upd: async () => { toast('Buscando la versión más nueva…'); try { const reg = await navigator.serviceWorker.getRegistration(); if (reg) await reg.update(); const ks = await caches.keys(); await Promise.all(ks.map(k => caches.delete(k))); } catch (e) {} location.reload(); },
   remind: el => remindSheet(el.dataset.col, el.dataset.id),
   'rm-quick': el => {
     const o = S[RM.col].find(x => x.id === RM.id); if (!o) return;
@@ -1324,13 +1349,19 @@ function pushBanner() {
 }
 
 /* ============================ ARRANQUE ============================ */
+let swReg = null;
 if (typeof document !== 'undefined' && $('#view')) {
   render();
-  if ('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('sw.js').catch(() => {});
+  if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+    // Se actualiza sola: busca versión nueva al abrir y al volver a la app, y recarga cuando llega
+    const had = !!navigator.serviceWorker.controller; let rl = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => { if (!had || rl) return; rl = true; const go = () => $('#sheet').classList.contains('open') ? setTimeout(go, 4000) : location.reload(); go(); });
+    navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(reg => { swReg = reg; reg.update().catch(() => {}); }).catch(() => {});
+  }
   sync(); notifyDue(); focusTick(); if (S.cfg.push) enablePush(true);
   setInterval(focusTick, 1000);
   setInterval(() => { if (!document.hidden) sync(); }, 90000);
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) { render(); sync(); notifyDue(); focusTick(); } });
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) { if (swReg) swReg.update().catch(() => {}); render(); sync(); notifyDue(); focusTick(); } });
 }
 
 /* ---- se siente como app: sin zoom por pellizco ni doble toque ---- */

@@ -463,9 +463,10 @@ function settingsSheet() {
     <label style="margin-bottom:14px">Presupuesto mensual para gastos (opcional)<input id="sBudget" inputmode="decimal" class="in" placeholder="0" value="${c.budget || ''}"></label>
     <div class="seg" id="sTheme"><button type="button" data-th="papel" class="${S.theme !== 'noche' ? 'on' : ''}">Papel</button><button type="button" data-th="noche" class="${S.theme === 'noche' ? 'on' : ''}">Noche</button></div>
     <h4 class="sh-h">Nube (Supabase)</h4>
-    <p class="hint">${ss ? `Conectado como <b>${esc(ss.email)}</b>. Se sincroniza solo.` : 'Para tener tus datos en todos tus aparatos. Mira el README.md para crear tu proyecto gratis.'}</p>
+    <p class="hint">${ss ? `Conectado como <b>${esc(ss.email)}</b>. Se sincroniza solo.` : 'Entra con tu correo y contraseña para tener tus datos en todos tus aparatos y no perderlos si reinstalas.'}</p>
+    <details class="adv"><summary>Avanzado: otro proyecto de Supabase</summary>
     <label>URL del proyecto<input id="cUrl" class="in" inputmode="url" autocapitalize="off" placeholder="https://xxxx.supabase.co" value="${esc(c.url || '')}"></label>
-    <label>Anon key<input id="cKey" class="in" autocapitalize="off" placeholder="eyJ..." value="${esc(c.key || '')}"></label>
+    <label>Anon key<input id="cKey" class="in" autocapitalize="off" placeholder="eyJ..." value="${esc(c.key || '')}"></label></details>
     ${ss ? '' : `<div class="g2"><label>Correo<input id="cMail" type="email" class="in" autocapitalize="off"></label><label>Contraseña<input id="cPass" type="password" class="in"></label></div>`}
     <div class="acts wrap">${ss ? '<button class="btn" data-act="cl-sync">Sincronizar ahora</button><button class="btn" data-act="cl-out">Salir</button>' : '<button class="btn pri" data-act="cl-in">Entrar</button><button class="btn" data-act="cl-up">Crear cuenta</button>'}</div>
     <h4 class="sh-h">Avisos y datos</h4>

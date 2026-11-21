@@ -327,7 +327,7 @@ function notesHtml() {
   const q = strip(ui.q).toLowerCase();
   const N = live(S.notes).filter(n => !q || strip(n.text).toLowerCase().includes(q)).sort((a, b) => (b.pin ? 1 : 0) - (a.pin ? 1 : 0) || b.updated - a.updated);
   if (!N.length) return empty(q ? 'Ninguna nota coincide.' : 'Tu mente está despejada. Suelta aquí lo que se te ocurra.');
-  return N.map(n => `<article class="note ${n.pin ? 'pinned' : ''}"><p>${esc(n.text).replace(/(#[\wáéíóúñ]+)/gi, '<mark>$1</mark>')}</p><div class="na"><button data-act="npin" data-id="${n.id}" aria-label="Fijar">${I.pin}</button><button data-act="ndel" data-id="${n.id}" aria-label="Borrar nota">${I.x}</button></div></article>`).join('');
+  return N.map(n => `<article class="note ${n.pin ? 'pinned' : ''}"><p>${esc(n.text).replace(/(#[\wáéíóúñ]+)/gi, '<mark>$1</mark>')}${n.remind && n.remind.date ? `<small class="rml">🔔 ${esc(remLabel(n.remind))}</small>` : ''}</p><div class="na">${bell('notes', n)}<button data-act="npin" data-id="${n.id}" aria-label="Fijar">${I.pin}</button><button data-act="ndel" data-id="${n.id}" aria-label="Borrar nota">${I.x}</button></div></article>`).join('');
 }
 function render() {
   const v = { hoy: vHoy, agenda: vAgenda, dinero: vDinero, mente: vMente }[ui.tab];
@@ -345,15 +345,20 @@ function render() {
 let edit = null, touched = {}, f = { type: 'task', cat: 'personal', star: false }, fSubs = [];
 const PH = ['pagar internet 30 el 15 cada mes', 'cita dentista viernes 4pm', 'entregar informe al cliente mañana importante', 'cumple de Sofi el 3 de marzo', 'idea: app para mi mamá', 'llamar al banco hoy 10am'];
 
+let lockY = 0;
 function openSheet(html, after) {
   $('#sheetBody').innerHTML = html;
+  if (!document.body.classList.contains('lock')) { lockY = window.scrollY; document.body.style.top = -lockY + 'px'; }
   $('#sheet').classList.add('open'); $('#scrim').classList.add('open'); $('#sheet').setAttribute('aria-hidden', 'false');
   document.body.classList.add('lock');
   if (after) after();
 }
 function closeSheet() {
   $('#sheet').classList.remove('open'); $('#scrim').classList.remove('open'); $('#sheet').setAttribute('aria-hidden', 'true');
-  document.body.classList.remove('lock');
+  const was = document.body.classList.contains('lock');
+  document.body.classList.remove('lock'); document.body.style.top = '';
+  if (was) window.scrollTo(0, lockY);
+  if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
 }
 const hist = () => { const seen = new Set(), out = []; [...live(S.items)].reverse().forEach(i => { const k = i.title.toLowerCase(); if (!seen.has(k) && out.length < 50) { seen.add(k); out.push(i.title); } }); return out; };
 
@@ -765,7 +770,7 @@ function goalSheet(g) {
     <label id="gProgL">Avance actual<input id="gProg" inputmode="decimal" class="in" value="${v.kind === 'num' ? (v.progress ?? 0) : 0}"></label>
     <div id="gRangeBox"><p class="hint" id="gOut">Avance: ${v.kind === 'pct' || !g ? (+v.progress || 0) : 0}%</p><input id="gRange" type="range" min="0" max="100" value="${v.kind === 'pct' || !g ? (+v.progress || 0) : 0}" aria-label="Avance en porcentaje"></div>
     <label style="margin-top:12px">Fecha límite (opcional)<input id="gDue" type="date" class="in" value="${v.due || ''}"></label>
-    <div class="acts">${g ? '<button class="btn" data-act="goal-del">Borrar</button>' : ''}<button class="btn pri" data-act="goal-save">Guardar</button></div>`, () => {
+    <div class="acts" style="flex-wrap:wrap">${g ? `<button class="btn" data-act="remind" data-col="goals" data-id="${g.id}">🔔 ${g.remind && g.remind.date ? esc(remLabel(g.remind)) : 'Recordarme'}</button><button class="btn" data-act="goal-del">Borrar</button>` : ''}<button class="btn pri" data-act="goal-save">Guardar</button></div>`, () => {
     const draw = () => {
       document.querySelectorAll('#gKind button').forEach(b => b.classList.toggle('on', b.dataset.k === GS.kind));
       $('#gNum').hidden = GS.kind !== 'num'; $('#gProgL').hidden = GS.kind !== 'num'; $('#gRangeBox').hidden = GS.kind !== 'pct';
@@ -918,7 +923,7 @@ function vMente() {
   ${listsHtml()}
   <div id="s-rit" class="anchor"></div>
   ${sec('Rituales', H.length)}
-  ${H.map(h => { const s = streak(h); return `<div class="hab"><div class="he">${esc(h.emoji)}</div><div class="hb"><b>${esc(h.name)}</b><div class="hd">${days.map(d => `<button class="hdot ${h.log[d] ? 'on' : ''} ${d === t ? 'now' : ''}" data-act="hday" data-id="${h.id}" data-d="${d}" aria-label="${rel(d)}" aria-pressed="${!!h.log[d]}">${DAYS_S[fromYmd(d).getDay()][0]}</button>`).join('')}</div></div><div class="stk">${s > 0 ? `${s}<small>${s === 1 ? 'día' : 'días'}</small>` : ''}</div><button class="x" data-act="hdel" data-id="${h.id}" aria-label="Borrar ritual">${I.x}</button></div>`; }).join('')}
+  ${H.map(h => { const s = streak(h); return `<div class="hab"><div class="he">${esc(h.emoji)}</div><div class="hb"><b>${esc(h.name)}${h.rtime ? ` <small class="rml">🔔 ${esc(h.rtime)}</small>` : ''}</b><div class="hd">${days.map(d => `<button class="hdot ${h.log[d] ? 'on' : ''} ${d === t ? 'now' : ''}" data-act="hday" data-id="${h.id}" data-d="${d}" aria-label="${rel(d)}" aria-pressed="${!!h.log[d]}">${DAYS_S[fromYmd(d).getDay()][0]}</button>`).join('')}</div></div><div class="stk">${s > 0 ? `${s}<small>${s === 1 ? 'día' : 'días'}</small>` : ''}</div>${bell('habits', h)}<button class="x" data-act="hdel" data-id="${h.id}" aria-label="Borrar ritual">${I.x}</button></div>`; }).join('')}
   <form class="addh" data-form="habit"><input class="in" name="emoji" maxlength="2" value="✨" aria-label="Emoji" style="width:62px;text-align:center"><input class="in" name="name" placeholder="Nuevo ritual, por ejemplo: estirarme" required><button class="btn">Añadir</button></form>
   <div id="s-met" class="anchor"></div>
   ${sec('Metas', G.length)}
@@ -966,8 +971,41 @@ function listSheet(id, keep) {
   openSheet(`<h3 class="sh-t">${esc(l.e)} ${esc(l.n)}</h3>
     <form class="addh" data-form="litem" style="margin:0 0 6px"><input id="liIn" class="in" name="t" autocomplete="off" enterkeyhint="done" placeholder="Agregar a la lista"><button class="btn pri">Agregar</button></form>
     ${open.length || done.length ? open.map(li).join('') + done.map(li).join('') : empty('Vacía. Agrega lo primero arriba.')}
-    <div class="acts" style="flex-wrap:wrap">${done.length ? '<button class="btn" data-act="lclear">Quitar tachadas</button><button class="btn" data-act="luncheck">Desmarcar todo</button>' : ''}<button class="btn" data-act="lshare">Compartir</button><button class="btn" data-act="ldel">Borrar lista</button></div>`);
+    <div class="acts" style="flex-wrap:wrap">${done.length ? '<button class="btn" data-act="lclear">Quitar tachadas</button><button class="btn" data-act="luncheck">Desmarcar todo</button>' : ''}<button class="btn" data-act="remind" data-col="lists" data-id="${l.id}">🔔 ${l.remind && l.remind.date ? esc(remLabel(l.remind)) : 'Recordarme'}</button><button class="btn" data-act="lshare">Compartir</button><button class="btn" data-act="ldel">Borrar lista</button></div>`);
   if (keep) $('#sheet').scrollTop = top;
+}
+
+/* ============================ RECORDARME (Mente) ============================ */
+let RM = { col: '', id: '' };
+const remLabel = r => {
+  if (!r || !r.date) return '';
+  const t = ymd(new Date()), tm = addDays(t, 1), d = r.date === t ? 'hoy' : r.date === tm ? 'mañana' : `${fromYmd(r.date).getDate()} ${MONTHS_S[fromYmd(r.date).getMonth()]}`;
+  return `${d} ${r.time || ''}${r.rep ? ' · ' + ({ daily: 'cada día', weekly: 'cada semana', monthly: 'cada mes' }[r.rep] || '') : ''}`.trim();
+};
+const bell = (col, o) => { const on = col === 'habits' ? !!o.rtime : !!(o.remind && o.remind.date); return `<button class="x ${on ? 'bon' : ''}" data-act="remind" data-col="${col}" data-id="${o.id}" aria-label="${on ? 'Cambiar recordatorio' : 'Recordarme'}" style="font-size:17px;line-height:1">🔔</button>`; };
+function remindSheet(col, id) {
+  const o = S[col].find(x => x.id === id && !x.deleted); if (!o) return;
+  RM = { col, id };
+  const now = new Date(), t = ymd(now), hm = d => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  if (col === 'habits') {
+    openSheet(`<h3 class="sh-t">Recordarme</h3><p class="hint">${esc(o.emoji)} ${esc(o.name)} — te aviso todos los días a esta hora (salvo si ya lo marcaste).</p>
+      <label>Hora<input id="rmTime" type="time" class="in" value="${o.rtime || '08:00'}"></label>
+      <div class="acts">${o.rtime ? '<button class="btn" data-act="rm-clear">Quitar</button>' : ''}<button class="btn pri" data-act="rm-save">Guardar</button></div>`);
+    return;
+  }
+  const r = o.remind || {}, soon = new Date(now.getTime() + 3600e3);
+  openSheet(`<h3 class="sh-t">Recordarme</h3>
+    <p class="hint">${r.date ? 'Ahora: ' + esc(remLabel(r)) : 'Elige cuándo quieres que te avise al celular.'}</p>
+    <div class="tpls"><button data-act="rm-quick" data-k="1h">En 1 hora</button><button data-act="rm-quick" data-k="night">Esta noche</button><button data-act="rm-quick" data-k="tom">Mañana</button><button data-act="rm-quick" data-k="sat">El sábado</button></div>
+    <div class="g2"><label>Fecha<input id="rmDate" type="date" class="in" value="${r.date || t}"></label><label>Hora<input id="rmTime" type="time" class="in" value="${r.time || hm(soon)}"></label></div>
+    <label style="margin-top:12px">Repetir<select id="rmRep" class="in">${[['', 'No repetir'], ['daily', 'Cada día'], ['weekly', 'Cada semana'], ['monthly', 'Cada mes']].map(([v, l]) => `<option value="${v}" ${(r.rep || '') === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+    <div class="acts">${r.date ? '<button class="btn" data-act="rm-clear">Quitar</button>' : ''}<button class="btn pri" data-act="rm-save">Guardar</button></div>`);
+}
+function remindDone(msg) {
+  const o = S[RM.col].find(x => x.id === RM.id); if (o) touch(o);
+  save(); render();
+  if (RM.col === 'lists') listSheet(RM.id); else closeSheet();
+  toast(msg + (S.cfg.push ? '' : ' · Activa los avisos en Hoy para recibirlo'));
 }
 
 /* ============================ BUSCAR ============================ */
@@ -990,6 +1028,25 @@ const shapeOf = i => shape(i.cat, 20);
 
 /* ============================ EVENTOS ============================ */
 const A = {
+  remind: el => remindSheet(el.dataset.col, el.dataset.id),
+  'rm-quick': el => {
+    const o = S[RM.col].find(x => x.id === RM.id); if (!o) return;
+    const now = new Date(), k = el.dataset.k, hm = d => `${pad(d.getHours())}:${pad(d.getMinutes())}`, dh = S.cfg.dayHour || 9;
+    let d;
+    if (k === '1h') d = new Date(now.getTime() + 3600e3);
+    else if (k === 'night') { d = new Date(now); d.setHours(20, 0, 0, 0); if (d <= now) d.setDate(d.getDate() + 1); }
+    else if (k === 'tom') { d = new Date(now); d.setDate(d.getDate() + 1); d.setHours(dh, 0, 0, 0); }
+    else { d = new Date(now); d.setDate(d.getDate() + ((6 - d.getDay() + 7) % 7 || 7)); d.setHours(10, 0, 0, 0); }
+    o.remind = { date: ymd(d), time: hm(d), rep: null }; remindDone('Te aviso ' + remLabel(o.remind));
+  },
+  'rm-save': () => {
+    const o = S[RM.col].find(x => x.id === RM.id); if (!o) return;
+    if (RM.col === 'habits') { o.rtime = $('#rmTime').value || '08:00'; remindDone('Te aviso todos los días a las ' + o.rtime); return; }
+    const date = $('#rmDate').value, time = $('#rmTime').value;
+    if (!date || !time) { toast('Elige fecha y hora'); return; }
+    o.remind = { date, time, rep: $('#rmRep').value || null }; remindDone('Te aviso ' + remLabel(o.remind));
+  },
+  'rm-clear': () => { const o = S[RM.col].find(x => x.id === RM.id); if (!o) return; if (RM.col === 'habits') o.rtime = null; else o.remind = null; remindDone('Recordatorio quitado'); },
   search: () => searchSheet(),
   lnew: () => listNewSheet(),
   lopen: el => listSheet(el.dataset.id),
@@ -1187,8 +1244,35 @@ function reminderRows(items, uidv, now = new Date(), dayHour = 9, fmt = n => '$'
   });
   return rows;
 }
+// Avisos de Mente: notas, listas y metas con "recordarme" (una vez o repetido) y rituales con hora diaria.
+function mindRows(St, uidv, now = new Date(), dayHour = 9) {
+  const rows = [], lo = now.getTime() - 15 * 60e3, hi = now.getTime() + 60 * 864e5, today = ymd(now);
+  const lv = a => (a || []).filter(x => !x.deleted);
+  const add = (o, title, body, when) => {
+    const t = when.getTime(); if (t < lo || t > hi) return;
+    rows.push({ id: `${o.id}_m_${ymd(when)}_${pad(when.getHours())}${pad(when.getMinutes())}`, user_id: uidv, item_id: o.id, title: String(title).slice(0, 80), body, remind_at: when.toISOString(), kind: 'auto' });
+  };
+  const step = (d, rp) => rp === 'daily' ? addDays(d, 1) : nextDate(d, rp);
+  const each = (col, f) => lv(St[col]).forEach(o => {
+    const r = o.remind; if (!r || !r.date) return;
+    const [h, m] = (r.time || `${pad(dayHour)}:00`).split(':').map(Number);
+    let d = r.date, k = 0;
+    if (r.rep) while (atLocal(d, h, m).getTime() < lo && k++ < 4000) d = step(d, r.rep);
+    k = 0;
+    while (k++ < 70) { const w = atLocal(d, h, m); if (w.getTime() > hi) break; const [ti, bo] = f(o); add(o, ti, bo, w); if (!r.rep) break; d = step(d, r.rep); }
+  });
+  each('notes', n => [n.text.split('\n')[0], 'Querías acordarte de esto']);
+  each('lists', l => [`${l.e} ${l.n}`, (c => c ? `Te faltan ${c} por tachar` : 'Revisa tu lista')(l.items.filter(x => !x.d).length)]);
+  each('goals', g => [`${g.emoji || '🎯'} ${g.title}`, 'Dale un paso a tu meta hoy']);
+  lv(St.habits).forEach(h => {
+    if (!h.rtime) return;
+    const [hh, mm] = h.rtime.split(':').map(Number);
+    for (let k = 0; k < 14; k++) { const d = addDays(today, k); if (k === 0 && h.log && h.log[today]) continue; add(h, `${h.emoji || '✨'} ${h.name}`, 'Es hora de tu ritual', atLocal(d, hh, mm)); }
+  });
+  return rows;
+}
 async function syncReminders(t) {
-  const u = S.sess.uid, want = reminderRows(S.items, u, new Date(), S.cfg.dayHour || 9, money);
+  const u = S.sess.uid, want = [...reminderRows(S.items, u, new Date(), S.cfg.dayHour || 9, money), ...mindRows(S, u, new Date(), S.cfg.dayHour || 9)];
   const have = await sb(`/rest/v1/reminders?select=id&user_id=eq.${u}&kind=eq.auto`, { token: t });
   const keep = new Set(want.map(r => r.id)), gone = (have || []).map(r => r.id).filter(id => !keep.has(id));
   if (want.length) await sb('/rest/v1/reminders', { method: 'POST', token: t, headers: { Prefer: 'resolution=merge-duplicates,return=minimal' }, body: want });
@@ -1252,3 +1336,23 @@ if (typeof document !== 'undefined' && $('#view')) {
 /* ---- se siente como app: sin zoom por pellizco ni doble toque ---- */
 ['gesturestart', 'gesturechange', 'gestureend'].forEach(ev => document.addEventListener(ev, e => e.preventDefault()));
 document.addEventListener('touchmove', e => { if (e.touches.length > 1) e.preventDefault(); }, { passive: false });
+
+/* ---- la hoja se queda quieta: no se arrastra el fondo, ni salta con el teclado ---- */
+(() => {
+  const sh = $('#sheet'), sc = $('#scrim');
+  sc.addEventListener('touchmove', e => e.preventDefault(), { passive: false });
+  sh.addEventListener('touchmove', e => {
+    if (e.target.closest('input[type=range],.cats,.jump,select')) return;
+    if (sh.scrollHeight <= sh.clientHeight + 1) e.preventDefault();
+  }, { passive: false });
+  const vv = window.visualViewport;
+  if (vv) {
+    const fit = () => {
+      if (!sh.classList.contains('open')) return;
+      sh.style.maxHeight = Math.floor(vv.height * 0.94) + 'px';
+      sh.style.bottom = Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop)) + 'px';
+    };
+    vv.addEventListener('resize', fit); vv.addEventListener('scroll', fit);
+    new MutationObserver(() => { if (!sh.classList.contains('open')) { sh.style.maxHeight = ''; sh.style.bottom = ''; } }).observe(sh, { attributes: true, attributeFilter: ['class'] });
+  }
+})();

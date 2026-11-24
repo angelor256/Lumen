@@ -131,8 +131,10 @@ async function action(a: string, id: string, t: string) {
     const ts = Date.now();
     it.done = true; it.doneAt = ts; it.updated = ts;
     if (it.repeat && it.date) {
+      // Las fechas guardadas son locales del usuario y el servidor corre en UTC: como "hoy"
+      // usamos la fecha del propio aviso, para no saltarnos una repetición vigente en zonas UTC-.
       items.push({
-        ...it, id: uid(), date: nextFuture(it.date, it.repeat, ymd(new Date())), done: false, doneAt: null,
+        ...it, id: uid(), date: nextFuture(it.date, it.repeat, ymd(new Date(r.remind_at))), done: false, doneAt: null,
         demo: false, created: ts, updated: ts,
         subs: it.subs ? it.subs.map((x: any) => ({ ...x, d: false })) : it.subs,
       });

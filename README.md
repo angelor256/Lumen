@@ -62,7 +62,7 @@ En el botón **+** escribe como hablas:
 Si ya escribiste algo antes (por ejemplo "Pagar agua"), recuerda su monto, categoría y repetición.
 Al completar algo que se repite, crea solo el siguiente.
 
-## Qué trae (versión 2)
+## Qué trae
 
 | Herramienta | Dónde | Para qué |
 |---|---|---|
@@ -86,7 +86,7 @@ No hay que tocar la base de datos. Reemplaza en tu repo **`index.html`**, **`app
 Abre la app en cada aparato una vez con internet para que se actualice.
 Tus datos anteriores se conservan; las secciones nuevas empiezan vacías.
 
-## 5. Avisos al celular (versión 3)
+## 5. Avisos al celular
 
 Lumen ahora es **recordatorios y pagos**: escribes "pagar luz 45 el 25 cada mes" y te llega una notificación real, **aunque la app esté cerrada**.
 

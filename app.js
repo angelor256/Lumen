@@ -179,7 +179,7 @@ let S = (() => { try { const s = JSON.parse(localStorage.getItem(KEY)); if (s &&
 const COLS = ['items', 'habits', 'notes', 'moves', 'goals', 'people', 'checks', 'focus', 'lists'];
 S.cfg = S.cfg || {}; COLS.forEach(k => { S[k] = S[k] || []; });
 // Nube por defecto: la URL y la anon key son públicas por diseño (la seguridad la da RLS). Así, al reinstalar solo falta tu correo y contraseña.
-const APP_VER = 'v7';
+const APP_VER = 'v8';
 const CLOUD = { url: 'https://uramhnknnwrdnvzugbyy.supabase.co', key: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVyYW1obmtubndyZG52enVnYnl5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTUxMTI2NjIsImV4cCI6MjExMDY4ODY2Mn0.mWFX49XtUCCvBK_pRi1a8Huy9nXyAtrhPVVgpmJOCsY' };
 if (!S.cfg.url) S.cfg.url = CLOUD.url;
 if (!S.cfg.key) S.cfg.key = CLOUD.key;
@@ -220,7 +220,8 @@ const I = {
   right: ic('<path d="M9 6l6 6-6 6"/>', 20),
   x: ic('<path d="M6 6l12 12M18 6L6 18"/>', 16),
   pin: ic('<path d="M9 4h6l-1 6 3 3H7l3-3zM12 13v7"/>', 18),
-  loop: ic('<path d="M17 2l3 3-3 3"/><path d="M4 11V9a4 4 0 0 1 4-4h12"/><path d="M7 22l-3-3 3-3"/><path d="M20 13v2a4 4 0 0 1-4 4H4"/>', 14)
+  loop: ic('<path d="M17 2l3 3-3 3"/><path d="M4 11V9a4 4 0 0 1 4-4h12"/><path d="M7 22l-3-3 3-3"/><path d="M20 13v2a4 4 0 0 1-4 4H4"/>', 14),
+  star: ic('<path d="M12 3l2.7 5.8 6.3.7-4.7 4.3 1.3 6.2L12 17l-5.6 3 1.3-6.2L3 9.5l6.3-.7z"/>', 20)
 };
 const SHAPES = {
   pagos: '<circle cx="12" cy="12" r="8.5"/>',
@@ -498,7 +499,8 @@ async function sb(path, { method = 'GET', body, token, headers = {} } = {}) {
   if (!url || !key) throw new Error('Falta la URL o la anon key');
   const r = await fetch(url + path, { method, headers: { apikey: key, 'Content-Type': 'application/json', ...(token ? { Authorization: 'Bearer ' + token } : {}), ...headers }, body: body ? JSON.stringify(body) : undefined });
   const txt = await r.text(); let j; try { j = txt ? JSON.parse(txt) : null; } catch (e) { j = txt; }
-  if (!r.ok) throw new Error((j && (j.msg || j.message || j.error_description || j.error)) || ('Error ' + r.status));
+  const first = Array.isArray(j) ? j[0] : j;
+  if (!r.ok) throw new Error((first && (first.msg || first.message || first.error_description || first.error)) || ('Error ' + r.status));
   return j;
 }
 const setSess = j => { S.sess = { access: j.access_token, refresh: j.refresh_token, exp: Date.now() + ((j.expires_in || 3600) - 60) * 1000, uid: j.user.id, email: j.user.email }; };
@@ -583,7 +585,6 @@ async function notifyDue(force) {
 }
 
 /* ============================ NUEVO · más herramientas ============================ */
-I.star = ic('<path d="M12 3l2.7 5.8 6.3.7-4.7 4.3 1.3 6.2L12 17l-5.6 3 1.3-6.2L3 9.5l6.3-.7z"/>', 20);
 const FACES = ['😞', '😕', '😐', '🙂', '😄'];
 const ENERGY = ['Energía baja', 'Energía media', 'Energía alta'];
 const GCATS = {
@@ -887,6 +888,8 @@ function vHoy() {
   </section>
   ${cloudBanner()}${pushBanner()}
   ${pinnedHabits()}
+  ${checkCard()}
+  ${reviewDue() ? `<div class="idea">${shape('personal', 22)}<p>Es día de <b>revisión semanal</b>: mira cómo te fue, qué te frenó y qué es lo único que importa ahora.</p><button class="btn" data-act="review">Revisar</button></div>` : ''}
   ${fav.length ? sec('Lo importante', fav.length) + fav.map(row).join('') : ''}
   ${overList.length ? sec('Atrasado', overList.length, 'late') + overList.map(row).join('') : ''}
   ${sec('Hoy', todayList.length)}
@@ -1310,7 +1313,7 @@ async function enablePush(silent) {
     if (!S.sess) throw new Error('Primero conecta la nube en Ajustes');
     if (isIOS() && !isStandalone()) throw new Error('En iPhone: abre Lumen desde el ícono de tu pantalla de inicio (Compartir → Añadir a pantalla de inicio)');
     if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) throw new Error('Este navegador no permite avisos');
-    if (silent === true && Notification.permission !== 'granted') return;
+    if (silent === true && Notification.permission !== 'granted') { pushErr = 'El navegador bloqueó los avisos'; render(); return; }
     if (Notification.permission !== 'granted' && (await Notification.requestPermission()) !== 'granted') throw new Error('Los avisos están bloqueados; actívalos en los ajustes del celular');
     const reg = await navigator.serviceWorker.ready;
     const r = await fetch(FN() + '?a=key', { headers: { apikey: S.cfg.key } }).catch(() => null);

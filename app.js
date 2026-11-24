@@ -180,7 +180,7 @@ const COLS = ['items', 'habits', 'notes', 'moves', 'goals', 'people', 'checks', 
 S.cfg = S.cfg || {}; COLS.forEach(k => { S[k] = S[k] || []; });
 // Nube por defecto: la URL y la anon key son públicas por diseño (la seguridad la da RLS). Así, al reinstalar solo falta tu correo y contraseña.
 const APP_VER = 'v8';
-const CLOUD = { url: 'https://uramhnknnwrdnvzugbyy.supabase.co', key: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJIUzI1NiIsInJlZiI6InVyYW1obmtubndyZG52enVnYnl5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTUxMTI2NjIsImV4cCI6MjExMDY4ODY2Mn0.mWFX49XtUCCvBK_pRi1a8Huy9nXyAtrhPVVgpmJOCsY' };
+const CLOUD = { url: 'https://uramhnknnwrdnvzugbyy.supabase.co', key: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVyYW1obmtubndyZG52enVnYnl5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTUxMTI2NjIsImV4cCI6MjExMDY4ODY2Mn0.mWFX49XtUCCvBK_pRi1a8Huy9nXyAtrhPVVgpmJOCsY' };
 if (!S.cfg.url) S.cfg.url = CLOUD.url;
 if (!S.cfg.key) S.cfg.key = CLOUD.key;
 const colsData = () => Object.fromEntries(COLS.map(k => [k, S[k]]));
@@ -858,7 +858,7 @@ function cloudBanner() {
   if (S.sess && !lastErr) return '';
   const off = /fetch|network|internet/i.test(lastErr);
   const msg = !S.sess ? 'Entra con tu correo para guardar todo en la nube. Si cambias de celular o reinstalas la app, no pierdes nada.' : off ? 'Sin internet: lo nuevo se guardará en la nube al volver la conexión.' : 'No se está guardando en la nube: ' + lastErr;
-  return `<div class="idea">${shape('citas', 22)}<p>${esc(msg)}</p>${off ? '' : `<button class="btn" data-act="settings">${S.sess ? 'Ver' : 'Entrar'}</button></div>`;
+  return `<div class="idea">${shape('citas', 22)}<p>${esc(msg)}</p>${off ? '' : `<button class="btn" data-act="settings">${S.sess ? 'Ver' : 'Entrar'}</button>`}</div>`;
 }
 function pinnedHabits() {
   const t = ymd(new Date()), H = live(S.habits), P = H.filter(h => h.pin);

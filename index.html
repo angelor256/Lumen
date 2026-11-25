@@ -67,7 +67,7 @@ button{cursor:pointer;border:0;background:none;padding:0}
 .disc::after{content:"";position:absolute;inset:0;background:radial-gradient(var(--ink) 1.3px,transparent 1.7px) 0 0/9px 9px;opacity:.2}
 .bignum{position:relative;margin:0;width:max-content;font:800 clamp(140px,42vw,200px)/.8 var(--disp);font-stretch:75%;letter-spacing:-.04em;color:var(--azul);padding-top:10px}
 .bignum::after,.vt::after,.mbig::after{content:attr(data-t);position:absolute;left:0;top:0;padding-top:inherit;color:var(--rosa);mix-blend-mode:var(--blend);pointer-events:none}
-.bignum::after{padding-top:10px;transform:translate(7px,6px)}
+.bignum::after{padding-top:10px;transform:translate(calc(7px * var(--off,1)),calc(6px * var(--off,1)));transition:transform 1s cubic-bezier(.2,.8,.2,1)}
 .fresh .bignum::after{animation:register 1.3s cubic-bezier(.2,.9,.2,1) both}
 @keyframes register{from{transform:translate(30px,22px);opacity:0}30%{opacity:1}to{transform:translate(7px,6px)}}
 .dateline{margin:14px 0 0;font:700 25px/1.1 var(--disp);font-stretch:85%}
@@ -327,6 +327,73 @@ input[type=range]{width:100%;accent-color:var(--rosa)}
 .sres{display:flex;align-items:center;gap:10px;width:100%;text-align:left;padding:11px 12px;margin-bottom:8px;background:var(--card);border:2px solid var(--ink);border-radius:14px}
 .sres small{display:block;color:var(--mute);font-weight:700;font-size:12px}
 .sres b{font-weight:600;word-break:break-word}
+/* ===== Tintas de risografía (paletas) ===== */
+[data-ink=cobalto]:not([data-theme=noche]){--bg:#E8EDFF;--ink:#101845;--dark:#101845;--sh:#101845;--mute:#55609A;--azul:#1637F5;--rosa:#FF7A2F;--sol:#FFC83D;--menta:#19B79F;--naranja:#FF4FA3}
+[data-ink=menta]:not([data-theme=noche]){--bg:#E4F3EC;--ink:#10201B;--dark:#10201B;--sh:#10201B;--mute:#4F6B61;--azul:#0F7A66;--rosa:#34D6B0;--sol:#F6E95B;--menta:#7FE3C6;--naranja:#FF8C5A}
+[data-ink=sol]:not([data-theme=noche]){--bg:#FFF3D0;--ink:#3A0F2B;--dark:#3A0F2B;--sh:#3A0F2B;--mute:#8A5A74;--azul:#D3126F;--rosa:#FF2E93;--sol:#FFC400;--menta:#14B8A6;--naranja:#FF7A2F}
+[data-ink=china]:not([data-theme=noche]){--bg:#EEEDE8;--ink:#111111;--dark:#111111;--sh:#111111;--mute:#666666;--azul:#111111;--rosa:#E63946;--sol:#F4D35E;--menta:#2A9D8F;--naranja:#F4A261}
+[data-theme=noche][data-ink=cobalto]{--azul:#7C8BFF;--rosa:#FF8A45;--naranja:#FF6BB5}
+[data-theme=noche][data-ink=menta]{--azul:#4FE0BE;--rosa:#34D6B0}
+[data-theme=noche][data-ink=sol]{--azul:#FF63AC;--rosa:#FF2E93}
+[data-theme=noche][data-ink=china]{--azul:#F4F4F4;--rosa:#FF5A67}
+.inks{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin:8px 0 4px}
+.ink{display:flex;flex-direction:column;align-items:flex-start;gap:6px;text-align:left;padding:10px 12px;border:2px solid var(--ink);border-radius:14px;background:var(--card);font-weight:700;font-size:14px}
+.ink .sw{display:flex}.ink .sw i{width:20px;height:20px;border-radius:50%;border:1.5px solid var(--ink);margin-right:-6px}
+.ink.on{background:var(--sol);color:var(--dark);box-shadow:3px 3px 0 var(--sh)}
+.ink.lock{opacity:.6}.ink small{color:var(--mute);font-weight:600;font-size:12px;line-height:1.2}.ink.on small{color:var(--dark)}
+
+/* ===== Captura rápida ===== */
+.qbar{position:sticky;top:env(safe-area-inset-top,0px);z-index:6;margin:0 -18px 6px;padding:8px 18px 10px;background:var(--bg)}
+.qbar form{display:flex;align-items:flex-end;gap:7px;padding:6px;border:2px solid var(--ink);border-radius:22px;background:var(--card);box-shadow:3px 3px 0 var(--sh)}
+.qin{flex:1;min-width:0;border:0;background:transparent;resize:none;outline:0;font:500 16px/1.35 var(--body);padding:8px 8px;max-height:112px;-webkit-user-select:text;user-select:text}
+.qin::placeholder{color:var(--mute)}
+.qbtn{flex:none;width:40px;height:40px;border-radius:50%;border:2px solid var(--ink);background:var(--bg);display:grid;place-items:center}
+.qbtn.go{background:var(--rosa);color:var(--dark)}
+.qbtn:active{transform:translate(2px,2px)}
+.qbar.listening form{border-color:var(--rosa)}
+.qbar.listening #qmic{background:var(--rosa);color:var(--dark)}
+.qstate{display:flex;align-items:center;gap:10px;margin:8px 4px 0;font-weight:700}
+.qstate small{color:var(--mute);font-weight:600;font-size:12px}
+.rg{position:relative;width:34px;height:22px;flex:none}
+.rg i{position:absolute;top:0;width:22px;height:22px;border-radius:50%;mix-blend-mode:var(--blend);animation:rgp 1s ease-in-out infinite alternate}
+.rg i:first-child{left:0;background:var(--rosa)}.rg i:last-child{left:12px;background:var(--azul);animation-delay:.25s}
+@keyframes rgp{to{transform:scale(1.28)}}
+
+/* ===== Ahora, atrasados y acciones ===== */
+.nowchips{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 10px}
+.nowchip{display:flex;align-items:center;gap:8px;padding:8px 13px;border-radius:22px;border:2px solid var(--ink);background:var(--card);font-weight:700;font-size:14px;box-shadow:3px 3px 0 var(--sh)}
+.latecard{margin:20px 0 4px;padding:14px;border:2px dashed var(--ink);border-radius:16px;background:transparent}
+.latecard h3{margin:0 0 4px;font:700 18px/1.2 var(--body)}
+.latecard p{margin:0 0 10px;color:var(--mute);font-size:14px;font-weight:600}
+.latecard .la{display:flex;flex-wrap:wrap;gap:8px}
+.latecard .btn{padding:9px 16px}
+.latecard .lrows{margin-top:12px}
+.latecard .row.late .md{color:var(--mute);font-weight:600}
+.paynow{margin-top:8px;padding:7px 14px;border-radius:20px;border:2px solid var(--ink);background:var(--sol);color:var(--dark);font-weight:800;font-size:14px;box-shadow:2px 2px 0 var(--sh)}
+.paynow:active{transform:translate(2px,2px);box-shadow:none}
+.pill.cd{background:var(--sol);color:var(--dark);font-weight:700}
+.pastebtn{margin:10px 0 0}
+
+/* ===== Sello del día y micro-reacciones ===== */
+.stamp{position:absolute;right:0;top:132px;transform:rotate(-9deg);padding:6px 12px 5px;border:3px solid var(--rosa);border-radius:10px;color:var(--rosa);font:800 21px/1 var(--disp);font-stretch:75%;letter-spacing:.05em;text-transform:uppercase;mix-blend-mode:var(--blend);opacity:.95;box-shadow:inset 0 0 0 2px var(--bg),inset 0 0 0 3.5px var(--rosa);pointer-events:none;text-align:center}
+.stamp small{display:block;margin-top:3px;font:700 10px/1 var(--body);letter-spacing:.12em}
+.stamp.stamping{animation:stampin .55s cubic-bezier(.2,1.4,.4,1) both}
+@keyframes stampin{0%{transform:rotate(-24deg) scale(2.4);opacity:0}60%{opacity:1}100%{transform:rotate(-9deg) scale(1)}}
+.disc.pop{animation:discpop .6s cubic-bezier(.3,1.6,.5,1)}
+@keyframes discpop{0%{transform:scale(1)}40%{transform:scale(1.09) rotate(-3deg)}100%{transform:scale(1)}}
+
+/* ===== Bóveda ===== */
+.vcard{margin-bottom:12px;padding:12px 14px;background:var(--card);border:2px solid var(--ink);border-radius:16px;box-shadow:4px 4px 0 var(--sh)}
+.vh{display:flex;align-items:center;gap:8px}
+.vh b{flex:1;font:700 18px/1.2 var(--body);overflow-wrap:anywhere}
+.vh .x{opacity:.6}.vh .x.bon{opacity:1}
+.vu,.vp{display:flex;align-items:center;gap:8px;margin:6px 0 0;font-weight:600;overflow-wrap:anywhere;-webkit-user-select:text;user-select:text}
+.vp code{font:600 17px/1.2 ui-monospace,Menlo,monospace;letter-spacing:.04em;flex:1;overflow-wrap:anywhere}
+.vcp{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+.vcp .btn{padding:13px 8px;font-size:15px}
+.vcp .btn.ok{background:var(--menta);color:var(--dark)}
+.vn{display:block;margin-top:8px;color:var(--mute);font-size:13px;font-weight:600}
+.vlocked{opacity:.75}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
 </style>
 </head>
@@ -342,6 +409,15 @@ input[type=range]{width:100%;accent-color:var(--rosa)}
       </button>
     </div>
   </header>
+  <div id="qbar" class="qbar" hidden>
+    <form id="qform" autocomplete="off">
+      <textarea id="qin" class="qin" rows="1" enterkeyhint="send" placeholder="Escribe, pega o dicta…" aria-label="Captura rápida"></textarea>
+      <button type="button" id="qmic" class="qbtn" data-act="mic" hidden aria-label="Dictar por voz"><svg class="ic" width="21" height="21" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></svg></button>
+      <button type="submit" class="qbtn go" aria-label="Guardar"><svg class="ic" width="21" height="21" viewBox="0 0 24 24"><path d="M5 12h13M13 6l6 6-6 6"/></svg></button>
+      <button type="button" class="qbtn" data-act="new" aria-label="Formulario completo"><svg class="ic" width="21" height="21" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
+    </form>
+    <div id="qstate" class="qstate" hidden><span class="rg" aria-hidden="true"><i></i><i></i></span><b>Escuchando…</b><small>toca el micrófono para terminar</small></div>
+  </div>
   <main id="view"></main>
 </div>
 

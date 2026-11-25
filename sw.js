@@ -1,5 +1,5 @@
 /* Lumen · service worker: la app abre aunque no tengas internet */
-const V = 'lumen-v8';
+const V = 'lumen-v9';
 const SHELL = ['./', 'index.html', 'app.js', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png'];
 
 self.addEventListener('install', e => {

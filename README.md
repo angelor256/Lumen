@@ -78,6 +78,12 @@ Al completar algo que se repite, crea solo el siguiente.
 | **Deshacer** | Al borrar o completar | Aparece un botón durante 6 segundos |
 | **Listas** | Mente | Compras, viaje, mudanza o lo que quieras, con casillas, plantillas y botón de compartir |
 | **Buscar** | Lupa de la cabecera | Busca en tareas, listas, notas, gente, metas y gastos |
+| **Buzón mágico** | Barra fija en Hoy | Escribe, pega o dicta (micrófono, si tu navegador lo permite). Lo clasifica en tu aparato, sin servicios externos: pagos y comprobantes (₡, $, «15 mil», «Monto: 15,000»), recordatorios con hora («en 20 min», «mañana a las 8»), claves (van a la Bóveda) o pendientes para hoy |
+| **Ahora** | Hoy | Solo lo accionable: avisos con hora en las próximas 6 horas, pagos de las próximas 48 horas y accesos fijados. Lo atrasado va en una sola tarjeta con «Pasar a hoy» o «Soltar» |
+| **Pagar ya** | Hoy y Pagos | Un toque: marca el pago como hecho, crea el siguiente ciclo si se repite y celebra. «Pegar comprobante» llena el formulario desde un mensaje |
+| **Bóveda** | Mente | Claves y accesos cifrados (AES-GCM, clave derivada con PBKDF2) con una clave maestra que solo sabes tú. Lo que se guarda y se sincroniza ya va cifrado; solo el nombre del servicio queda legible para buscarlo. Ojo aviso: si olvidas la clave maestra no se puede recuperar. Se bloquea sola por inactividad (Ajustes) |
+| **Tintas** | Ajustes | Paletas de risografía. Dos vienen listas; las otras se desbloquean con días cerrados, pagos a tiempo y recordatorios cumplidos |
+| **Sello del día** | Hoy | Al vaciar los pendientes de hoy se estampa «Día limpio» o «Sin deudas hoy», y el disco y el registro de tinta del número reaccionan |
 | **Sin fecha** | Hoy | Las tareas sin fecha ya no se pierden |
 
 ## Si ya tenías Lumen publicado
@@ -115,3 +121,13 @@ Los avisos se programan cuando la app sincroniza, así que si agregas algo, ábr
 ## Respaldo
 
 Ajustes → **Respaldo** descarga un JSON. **Exportar al calendario** genera un `.ics` para Google/Apple Calendar.
+
+
+## Pruebas
+
+```bash
+node tests/pure.test.js   # clasificador del buzón mágico y frases de Hoy
+```
+
+> El dictado usa el reconocimiento de voz del navegador, que normalmente envía el audio a los servidores del navegador. No dictes claves.
+> Los avisos con la app cerrada vienen de los avisos push (Ajustes → Activar avisos); sin ellos, Lumen avisa a la hora exacta solo mientras la app siga abierta.
